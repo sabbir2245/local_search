@@ -272,8 +272,6 @@ void scanNumber() {
             }
         }
         if (hasInvalid || !anyHex) {
-            while ((c = yyinput()) != EOF && !isspace(c) && c != '\n') buf += (char)c;
-            if (c != EOF) unput(c);
             printError("Invalid hexadecimal constant " + buf);
             return;
         }
