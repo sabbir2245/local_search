@@ -843,3 +843,491 @@ flex -o c1.c 2205040_C1.l && g++ -o c1 c1.c
 
 Run each program with an input file: `./a1 input.txt`. See `howtorunandtest.md` for the
 full test procedure.
+
+---
+
+# D1: LaTeX Command Validator
+
+## Problem Statement
+
+Write a flex program to validate a simplified LaTeX document. Only three commands are
+supported: `\textbf`, `\textit`, and `\section`.
+
+Rules:
+
+- A command is written as `\name` and must be followed immediately by a brace block
+  `{...}` containing its argument.
+- Braces must be balanced and properly nested.
+- Commands may be nested inside a brace block (e.g. `\textbf{\textit{...}}`).
+- A `{` or `}` that does not belong to a command is an error.
+- Any command other than the three supported ones is an error.
+- Stop parsing immediately after detecting the first error.
+
+Error messages:
+
+- `Error: unsupported command` - a command other than `textbf`, `textit`, `section`.
+- `Error: command not followed by brace block` - a command that is not immediately
+  followed by `{`.
+- `Error: unmatched {` - an unclosed or orphan opening brace.
+- `Error: unmatched }` - a closing brace with no matching opening brace.
+
+On success print `Valid LaTeX syntax`.
+
+## Sample Input / Output
+
+| Input | Output |
+|---|---|
+| `\textbf{Bold text}` | `Valid LaTeX syntax` |
+| `\textbf{bold and \textit{nested} text}` | `Valid LaTeX syntax` |
+| `\section{Title}` | `Valid LaTeX syntax` |
+| `\textbf{unclosed` | `Error: unmatched {` |
+| `\textbf broken` | `Error: command not followed by brace block` |
+| `\emph{text}` | `Error: unsupported command` |
+| `{orphan}` | `Error: unmatched {` |
+
+## Solution (`latex.l`)
+
+```flex
+%option noyywrap yylineno
+
+%{
+#include <iostream>
+#include <vector>
+#include <string>
+#include <cstdlib>
+
+using namespace std;
+
+/* Stack to track brace nesting depth */
+vector<int> braceStack;  // Stores the line number where each brace was opened
+
+string currentCommand = "";
+int braceDepth = 0;
+bool commandPending = false;  // True if we just saw a command and need a brace block
+
+/* Supported commands */
+bool isSupported(const string& cmd) {
+    return cmd == "textbf" || cmd == "textit" || cmd == "section";
+}
+
+void report(const string& msg) {
+    cout << "Error: " << msg << endl;
+    exit(0);
+}
+
+void reportSuccess() {
+    cout << "Valid LaTeX syntax" << endl;
+    exit(0);
+}
+
+%}
+
+%x COMMAND
+%x BRACE_BLOCK
+
+%%
+
+ /* =============== INITIAL State =============== */
+<INITIAL>{
+    /* Backslash indicates start of a command */
+    "\\" {
+        currentCommand = "";
+        BEGIN(COMMAND);
+    }
+
+    /* Braces without command should be an error */
+    "{" {
+        report("unmatched {");
+    }
+    "}" {
+        report("unmatched }");
+    }
+
+    /* Regular text content (anything else) */
+    [^\\{}]+    ;  /* ignore text */
+
+    <<EOF>> {
+        if (commandPending) {
+            report("command not followed by brace block");
+        }
+        if (braceDepth > 0) {
+            report("unmatched {");
+        }
+        reportSuccess();
+    }
+}
+
+ /* =============== COMMAND State - parsing command name =============== */
+<COMMAND>{
+    /* Command name: letters only (no numbers or underscores for simplicity) */
+    [a-zA-Z]+ {
+        currentCommand = yytext;
+        commandPending = true;
+        
+        if (!isSupported(currentCommand)) {
+            report("unsupported command");
+        }
+        
+        BEGIN(INITIAL);
+    }
+
+    /* If we see a brace immediately after backslash, there's no command name */
+    "{" {
+        report("unsupported command");  // Empty command name
+    }
+
+    /* Any other character after backslash is invalid */
+    . {
+        report("unsupported command");
+    }
+
+    <<EOF>> {
+        report("unsupported command");
+    }
+}
+
+ /* =============== BRACE_BLOCK State - inside braces =============== */
+<BRACE_BLOCK>{
+    /* Opening brace increases depth */
+    "{" {
+        braceDepth++;
+    }
+
+    /* Closing brace decreases depth */
+    "}" {
+        braceDepth--;
+        if (braceDepth == 0) {
+            /* Exited the current brace block */
+            commandPending = false;
+            BEGIN(INITIAL);
+        }
+    }
+
+    /* Backslash inside braces - could be nested command */
+    "\\" {
+        /* Start a nested command */
+        currentCommand = "";
+        BEGIN(COMMAND);
+    }
+
+    /* Any text inside braces */
+    [^\\{}]+    ;  /* ignore text */
+
+    <<EOF>> {
+        report("unmatched {");
+    }
+}
+
+ /* =============== Global Rules =============== */
+
+/* After finishing a command, we should immediately enter BRACE_BLOCK */
+<INITIAL>{
+    /* This is the key: when commandPending is true and we see '{' */
+    "{" {
+        if (commandPending) {
+            /* Enter the brace block for the command */
+            braceDepth = 1;
+            BEGIN(BRACE_BLOCK);
+            commandPending = false;
+        } else {
+            /* Opening brace without command */
+            report("unmatched {");
+        }
+    }
+
+    /* If we see anything other than '{' when commandPending is true */
+    [^\\{]+ {
+        if (commandPending) {
+            report("command not followed by brace block");
+        }
+        /* If no pending command, just ignore text */
+    }
+}
+
+ /* =============== Catch-all =============== */
+. {
+    /* Should not reach here, but just in case */
+    ;
+}
+
+%%
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        cerr << "Usage: " << argv[0] << " <input_file>" << endl;
+        return 1;
+    }
+    
+    yyin = fopen(argv[1], "r");
+    if (!yyin) {
+        cerr << "Cannot open input file: " << argv[1] << endl;
+        return 1;
+    }
+    
+    yylex();
+    return 0;
+}
+```
+
+---
+
+# D2: Star-Plus Pyramid Pattern
+
+## Problem Statement
+
+Write a flex program to validate a pyramid-shaped pattern built from stars `*` and
+pluses `+`. The pattern is read line by line.
+
+Rules:
+
+- Each line has the form `left stars, then pluses, then right stars`, where the number of
+  stars on the left equals the number on the right.
+- The first line must have at least one star on each side and exactly one plus.
+- Each following line must have one fewer star per side and two more pluses than the
+  previous line.
+- The pattern ends when the star count reaches zero (a line of only pluses).
+
+Error checking (stop at the first error, report the line number):
+
+- `Error at line N: Empty line`
+- `Error at line N: Line must start with stars`
+- `Error at line N: Invalid character in pattern`
+- `Error at line N: Invalid character after right stars`
+- `Error at line N: Extra characters after pattern`
+- `Error at line N: Stars on left and right not equal`
+- `Error at line N: First line must have at least one star on each side and exactly one plus`
+- `Error at line N: Stars on each side should be X but found Y`
+- `Error at line N: Pluses should be X but found Y`
+- `Error at line N: Pattern reached zero stars before final line`
+- `Error at line N: Invalid characters in pattern`
+- `Error at line N: Invalid pattern format`
+- `Error at line N: Empty file - no pattern found`
+- `Error at line N: Pattern incomplete - missing final plus-only line`
+
+On success print `Pattern matched successfully!`.
+
+## Sample Input / Output
+
+| Input | Output |
+|---|---|
+| `**+**`<br>`*+++*` | `Pattern matched successfully!` |
+| `*+*` | `Pattern matched successfully!` |
+| `*++*` | `Error at line 1: First line must have at least one star on each side and exactly one plus` |
+| `**+*` | `Error at line 1: Stars on left and right not equal` |
+| `*+*+*` | `Error at line 1: Invalid character after right stars` |
+| `+*+` | `Error at line 1: Line must start with stars` |
+| `**+**`<br>`*+*` | `Error at line 2: Pluses should be 3 but found 1` |
+| `ax*+*` | `Error at line 1: Invalid characters in pattern` |
+
+## Solution (`pyrami.l`)
+
+```flex
+%option noyywrap yylineno
+
+%{
+#include <iostream>
+#include <string>
+#include <cstdlib>
+
+using namespace std;
+
+/* =============== Global Variables =============== */
+int lineNumber = 1;
+int expectedStars = -1;
+int expectedPluses = -1;
+bool firstLine = true;
+string currentLine = "";
+
+/* =============== Helper Functions =============== */
+void reportError(const string& msg) {
+    cout << "Error at line " << lineNumber << ": " << msg << endl;
+    exit(1);
+}
+
+void reportSuccess() {
+    cout << "Pattern matched successfully!" << endl;
+    exit(0);
+}
+
+/* =============== State Machine Variables =============== */
+enum ParseState {
+    START_LINE,
+    LEFT_STARS,
+    PLUSES,
+    RIGHT_STARS,
+    DONE
+};
+
+void validatePyramidPattern(const string& line) {
+    if (line.empty()) {
+        reportError("Empty line");
+        return;
+    }
+    
+    ParseState state = START_LINE;
+    int leftStars = 0, rightStars = 0, pluses = 0;
+    
+    for (char c : line) {
+        switch (state) {
+            case START_LINE:
+            case LEFT_STARS:
+                if (c == '*') {
+                    leftStars++;
+                    state = LEFT_STARS;
+                } else if (c == '+') {
+                    if (state == START_LINE) {
+                        reportError("Line must start with stars");
+                    }
+                    pluses++;
+                    state = PLUSES;
+                } else {
+                    reportError("Invalid character in pattern");
+                }
+                break;
+                
+            case PLUSES:
+                if (c == '+') {
+                    pluses++;
+                } else if (c == '*') {
+                    rightStars++;
+                    state = RIGHT_STARS;
+                } else {
+                    reportError("Invalid character in pattern");
+                }
+                break;
+                
+            case RIGHT_STARS:
+                if (c == '*') {
+                    rightStars++;
+                } else {
+                    reportError("Invalid character after right stars");
+                }
+                break;
+                
+            case DONE:
+                reportError("Extra characters after pattern");
+                break;
+        }
+    }
+    
+    // Validate the pattern
+    if (state == START_LINE) {
+        reportError("Empty line");
+    }
+    
+    if (leftStars != rightStars) {
+        reportError("Stars on left and right not equal");
+    }
+    
+    if (firstLine) {
+        if (leftStars < 1 || pluses != 1) {
+            reportError("First line must have at least one star on each side and exactly one plus");
+        }
+        expectedStars = leftStars - 1;
+        expectedPluses = pluses + 2;
+        firstLine = false;
+    } else {
+        if (leftStars != expectedStars) {
+            reportError("Stars on each side should be " + to_string(expectedStars) + 
+                       " but found " + to_string(leftStars));
+        }
+        if (pluses != expectedPluses) {
+            reportError("Pluses should be " + to_string(expectedPluses) + 
+                       " but found " + to_string(pluses));
+        }
+        
+        expectedStars--;
+        expectedPluses += 2;
+        
+        if (leftStars == 0) {
+            // This should be the last line (all pluses)
+            if (expectedStars != -1) {
+                reportError("Pattern reached zero stars before final line");
+            }
+        }
+    }
+}
+
+%}
+
+%x LINE_CONTENT
+
+%%
+
+ /* =============== Main Rules =============== */
+ /* Start of a new line - collect the entire line */
+^ {
+    currentLine = "";
+    BEGIN(LINE_CONTENT);
+}
+
+<LINE_CONTENT>{
+    /* Collect characters until end of line */
+    [^*+\n]+ {
+        reportError("Invalid characters in pattern");
+    }
+    
+    [*+]  {
+        currentLine += yytext;
+    }
+    
+    \n {
+        if (!currentLine.empty()) {
+            validatePyramidPattern(currentLine);
+            lineNumber++;
+        }
+        BEGIN(INITIAL);
+    }
+    
+    <<EOF>> {
+        if (!currentLine.empty()) {
+            validatePyramidPattern(currentLine);
+            lineNumber++;
+        }
+        if (firstLine) {
+            reportError("Empty file - no pattern found");
+        }
+        if (expectedStars > 0 || expectedStars == -1) {
+            reportError("Pattern incomplete - missing final plus-only line");
+        }
+        reportSuccess();
+    }
+}
+
+ /* Handle EOF in INITIAL state */
+<<EOF>> {
+    if (firstLine) {
+        reportError("Empty file - no pattern found");
+    }
+    if (expectedStars > 0 || expectedStars == -1) {
+        reportError("Pattern incomplete - missing final plus-only line");
+    }
+    reportSuccess();
+}
+
+ /* Whitespace at top level - ignore */
+[ \t]+    ;
+
+ /* Any other characters at top level */
+. {
+    reportError("Invalid pattern format");
+}
+
+%%
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        cerr << "Usage: " << argv[0] << " <input_file>" << endl;
+        return 1;
+    }
+    
+    yyin = fopen(argv[1], "r");
+    if (!yyin) {
+        cerr << "Cannot open input file: " << argv[1] << endl;
+        return 1;
+    }
+    
+    yylex();
+    return 0;
+}
+```
