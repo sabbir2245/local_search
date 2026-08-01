@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <cstdlib>
 
 using namespace std;
 
@@ -17,7 +18,7 @@ bool isSupported(const string& name) {
 
 void report(const string& msg) {
     cout << msg << endl;
-    yyterminate();
+    exit(0);
 }
 
 %}
@@ -27,7 +28,7 @@ void report(const string& msg) {
 %%
 
 /* =============== critical: tag matching with a stack =============== */
-<<EOF>> {
+<INITIAL><<EOF>> {
     if (!tagStack.empty()) {
         report("Invalid XML: missing closing tag for <" + tagStack.back() + ">");
     } else {
@@ -43,6 +44,7 @@ void report(const string& msg) {
     [ \t\n]         ;
     ">"             {
         BEGIN(INITIAL);
+        tagBuf += ">";
         if (tagName.empty()) { report("Invalid XML: unsupported tag " + tagBuf); }
         if (tagBuf.find('/') == string::npos) {
             // opening tag
@@ -56,8 +58,8 @@ void report(const string& msg) {
             tagStack.pop_back();
         }
     }
-    .               { report("Invalid XML: unsupported tag " + tagBuf); }
-    <<EOF>>         { report("Invalid XML: unsupported tag " + tagBuf); }
+    .               { tagBuf += ">"; report("Invalid XML: unsupported tag " + tagBuf); }
+    <<EOF>>         { tagBuf += ">"; report("Invalid XML: unsupported tag " + tagBuf); }
 }
 
 [^<]+               ;   /* ignore text content */

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <cstdlib>
 
 using namespace std;
 
@@ -23,7 +24,7 @@ int completed = 0;
 
 void fail(const string& msg) {
     cout << msg << endl;
-    yyterminate();
+    exit(0);
 }
 
 void ensureOpen() {

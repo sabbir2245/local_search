@@ -326,7 +326,7 @@ void scanNumber() {
     }
 
     if (!errorType.empty()) {
-        while ((c = yyinput()) != EOF && !isspace(c) && c != '\n') buf += (char)c;
+        while ((c = yyinput()) != EOF && (isalnum(c) || c == '.' || c == '_')) buf += (char)c;
         if (c != EOF) unput(c);
         if (errorType == "multiple decimal") printError("Too many decimal points " + buf);
         else if (errorType == "ill formed") printError("Ill formed number " + buf);
