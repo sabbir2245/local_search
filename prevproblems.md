@@ -1,3 +1,227 @@
+# Previous Problems: A1, B1, C1 (Statements + Solutions)
+
+Combined problem statements and complete solutions for the three online labs.
+Each solution has been compiled with `flex 2.6.4` and `g++` and tested.
+
+---
+
+# A1: Yet Another Tag Matching (XML)
+
+## Problem Statement
+
+Validate the proper nesting of tags in a simplified XML-like document. Each opening tag
+must have a corresponding closing tag, and the tags must be closed in the correct order.
+
+Supported tags (only these are allowed):
+
+- `<book>` and `</book>`
+- `<title>` and `</title>`
+- `<author>` and `</author>`
+
+Requirements:
+
+- Detect and validate the supported opening and closing tags.
+- Each closing tag must match the most recently encountered unmatched opening tag
+  (use a stack).
+- Ignore all text content between tags.
+- Any tag other than `book`, `title`, `author` is reported as **unsupported**.
+- A closing tag that does not match the most recent opening tag is a **tag mismatch**.
+- A closing tag without a corresponding opening tag is an **unexpected closing tag**.
+- Unmatched opening tags at end of input are reported as a **missing closing tag**.
+- Stop parsing immediately after detecting the first error.
+
+## Sample Input / Output
+
+| Input | Output |
+|---|---|
+| `<book><title>Compiler Design</title><author>A. Aho</author></book>` | `Valid XML structure` |
+| `<book><title>Compiler Design</author></book>` | `Invalid XML: tag mismatch </author>` |
+| `<book><title>Compiler Design</title>` | `Invalid XML: missing closing tag for <book>` |
+| `<book><publisher>ABC Press</publisher></book>` | `Invalid XML: unsupported tag <publisher>` |
+| `<book></author></book>` | `Invalid XML: tag mismatch </author>` |
+
+## Solution (`2205040_A1.l`)
+
+```flex
+%option noyywrap yylineno
+
+%{
+#include <iostream>
+#include <vector>
+#include <string>
+#include <cstdlib>
+
+using namespace std;
+
+vector<string> tagStack;
+string tagName;
+string tagBuf;
+
+bool isSupported(const string& name) {
+    return name == "book" || name == "title" || name == "author";
+}
+
+void report(const string& msg) {
+    cout << msg << endl;
+    exit(0);
+}
+
+%}
+
+%x TAG
+
+%%
+
+ /* tag matching with a stack */
+<INITIAL><<EOF>> {
+    if (!tagStack.empty()) {
+        report("Invalid XML: missing closing tag for <" + tagStack.back() + ">");
+    } else {
+        report("Valid XML structure");
+    }
+}
+
+"<"                 { tagBuf = "<"; tagName = ""; BEGIN(TAG); }
+
+<TAG>{
+    "/"             { tagBuf += "/"; }
+    [a-zA-Z_][a-zA-Z0-9_]* { tagBuf += yytext; tagName = yytext; }
+    [ \t\n]         ;
+    ">"             {
+        BEGIN(INITIAL);
+        tagBuf += ">";
+        if (tagName.empty()) { report("Invalid XML: unsupported tag " + tagBuf); }
+        if (tagBuf.find('/') == string::npos) {
+            // opening tag
+            if (!isSupported(tagName)) { report("Invalid XML: unsupported tag " + tagBuf); }
+            tagStack.push_back(tagName);
+        } else {
+            // closing tag
+            if (!isSupported(tagName)) { report("Invalid XML: unsupported tag " + tagBuf); }
+            if (tagStack.empty()) { report("Invalid XML: unexpected closing tag " + tagBuf); }
+            if (tagStack.back() != tagName) { report("Invalid XML: tag mismatch " + tagBuf); }
+            tagStack.pop_back();
+        }
+    }
+    .               { tagBuf += ">"; report("Invalid XML: unsupported tag " + tagBuf); }
+    <<EOF>>         { tagBuf += ">"; report("Invalid XML: unsupported tag " + tagBuf); }
+}
+
+[^<]+               ;   /* ignore text content */
+.                   ;
+
+%%
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        cerr << "Usage: " << argv[0] << " <input_file>" << endl;
+        return 1;
+    }
+    yyin = fopen(argv[1], "r");
+    if (!yyin) {
+        cerr << "Cannot open input file: " << argv[1] << endl;
+        return 1;
+    }
+    yylex();
+    return 0;
+}
+```
+
+---
+
+# B1: Oct, Hex, and Lua
+
+## Problem Statement
+
+Extend the lexical analyzer from the offline lexical-analysis assignment with two features.
+All previously specified tokenization, symbol-table, line-counting, and error-reporting
+rules remain unchanged.
+
+### 1. Octal and Hexadecimal Integer Constants
+
+- An octal constant starts with `0`, has at least one additional digit, and all following
+  digits are in `0-7`. Examples: `00`, `017`, `0755`.
+- A single `0` continues to be recognized as `CONST_INT`.
+- A hexadecimal constant starts with `0x` or `0X` and has at least one hex digit from
+  `0-9`, `a-f`, `A-F`. Examples: `0x2A`, `0Xff`, `0x10B7`.
+
+Token formats: `0755 -> <CONST_OCT, 0755>`, `0x2A -> <CONST_HEX, 0x2A>`.
+
+Log format:
+```
+Line no 3: Token <CONST_OCT> Lexeme 0755 found
+Line no 4: Token <CONST_HEX> Lexeme 0x2A found
+```
+
+Error checking:
+
+- `Line no <n>: Invalid octal constant <lexeme>` for numbers starting with `0` that contain
+  `8` or `9` (e.g. `078`, `0197`, `0089`).
+- `Line no <n>: Invalid hexadecimal constant <lexeme>` when `0x`/`0X` is not followed by a
+  hex digit, or an alphanumeric continuation has a non-hex character (e.g. `0x`, `0XG1`, `0x2AZ`).
+- An invalid numeric lexeme is consumed and reported as one error; it is not split into
+  valid tokens, no token is written, and octal/hex constants are **not** inserted into the
+  symbol table.
+
+### 2. Lua-Style Comments
+
+- Multiline Lua comment starts with `--[[` and ends at the first following `]]`. It may span
+  multiple lines.
+- Lua comments produce no token and are not inserted into the symbol table.
+- Log message: `Line no <start>: Lua multiline comment ending at line <end> found`
+- Comment delimiters inside string literals or character constants are ordinary characters.
+- Error: `Line no <start>: Unfinished Lua multiline comment` if EOF is reached before the
+  comment closes (counted in the total error count).
+
+## Sample I/O
+
+Sample 1 (valid):
+```
+int permission = 0755;
+int mask = 0x2Af;
+--[[ Lua comment
+spanning two lines ]]
+```
+Token file: `<CONST_OCT, 0755> <CONST_HEX, 0x2Af>`
+Log file:
+```
+Line no 1: Token <CONST_OCT> Lexeme 0755 found
+Line no 2: Token <CONST_HEX> Lexeme 0x2Af found
+Line no 3: Lua multiline comment ending at line 4 found
+```
+
+Sample 2 (invalid):
+```
+int a = 0789;
+int b = 0x2G7;
+int c = 0X;
+```
+Log file:
+```
+Line no 1: Invalid octal constant 0789
+Line no 2: Invalid hexadecimal constant 0x2G7
+Line no 3: Invalid hexadecimal constant 0X
+```
+
+Sample 3 (ordinary tokens keep working): `count--;` still produces the `INCOP` token,
+`017 -> <CONST_OCT, 017>`, `0XABC9 -> <CONST_HEX, 0XABC9>`.
+
+Sample 4 (unfinished comment):
+```
+int x = 0x1F;
+--[[ this comment
+never ends
+```
+Token file: `<CONST_HEX, 0x1F>`
+Log file:
+```
+Line no 1: Token <CONST_HEX> Lexeme 0x1F found
+Line no 2: Unfinished Lua multiline comment
+```
+
+## Solution (`2205040_B1.l`)
+
+```flex
 %option noyywrap yylineno
 
 %{
@@ -57,7 +281,7 @@ void scanNumber();
 [ \t]+                ;
 \n                    ;
 
- /* =============== critical: Lua-style multiline comment --[[ ... ]] =============== */
+ /* Lua-style multiline comment --[[ ... ]] */
 "--[["                { BEGIN(LUA_COMMENT); startLine = yylineno; }
 
 <LUA_COMMENT>{
@@ -251,8 +475,8 @@ void scanNumber() {
     string buf;
     buf += yytext[0];
 
-    /* =============== critical: octal & hexadecimal integer constants =============== */
-    // ---- Hex constant detection: 0x / 0X ----
+    /* octal & hexadecimal integer constants */
+    // Hex constant detection: 0x / 0X
     int c0 = yyinput();
     if (yytext[0] == '0' && (c0 == 'x' || c0 == 'X')) {
         buf += (char)c0;
@@ -281,7 +505,7 @@ void scanNumber() {
     }
     if (c0 != EOF) unput(c0);
 
-    // ---- Decimal / Octal detection ----
+    // Decimal / Octal detection
     bool isFloat = false;
     int dotCount = 0;
     bool hasExponent = false;
@@ -334,7 +558,7 @@ void scanNumber() {
         return;
     }
 
-    // ---- Octal constant detection: starts with 0 and has >= 1 more digit ----
+    // Octal constant detection: starts with 0 and has >= 1 more digit
     if (yytext[0] == '0' && buf.length() > 1 && !isFloat && !hasExponent) {
         bool validOct = true;
         for (size_t i = 0; i < buf.size(); i++) {
@@ -389,3 +613,233 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+```
+
+---
+
+# C1: Python Dictionary
+
+## Problem Statement
+
+Create a `.l` file to validate a simplified Python dictionary. The input is a single
+dictionary containing key-value pairs.
+
+Rules for a valid dictionary:
+
+- The complete dictionary is enclosed within `{` and `}`.
+- A key may be a quoted string or an integer constant.
+- A quoted string may use either single quotes `'...'` or double quotes `"..."`.
+- Each key is followed by a colon `:`.
+- A value may be a quoted string, an integer constant, `True`, `False`, `None`, or another
+  dictionary.
+- A comma `,` separates consecutive key-value pairs.
+- A comma after the final key-value pair is optional.
+
+Validate:
+
+- proper matching and nesting of `{` and `}`;
+- proper opening and closing of single and double quotation marks;
+- valid string or integer keys;
+- correct use of `:` between a key and its value;
+- correct use of `,` between consecutive key-value pairs.
+
+Error checking (report only the first error):
+
+- `Error: invalid dictionary key` - a key is neither a quoted string nor an integer.
+- `Error: missing pair separator` - two pairs are not separated by `,`.
+- `Error: unmatched {` - an opening brace remains unmatched at end of input.
+
+## Sample I/O
+
+Sample 1 (valid):
+```
+{
+    'name': "alice",
+    101: { "city": 'sylhet', "active": True },
+    "phone": None
+}
+```
+Output: `Valid Python Dictionary`
+
+Sample 2 (invalid unquoted key): `{ name: "alice", "city": "dhaka" }`
+Output: `Error: invalid dictionary key`
+
+Sample 3 (missing pair separator): `{ "name": "alice" "city": "dhaka" }`
+Output: `Error: missing pair separator`
+
+Sample 4 (unmatched brace):
+```
+{ "name": "alice", "address": { "city": "sylhet" }
+```
+Output: `Error: unmatched {`
+
+## Solution (`2205040_C1.l`)
+
+```flex
+%option noyywrap yylineno
+
+%{
+#include <iostream>
+#include <vector>
+#include <string>
+#include <cstdlib>
+
+using namespace std;
+
+/* dictionary validation mode machine */
+enum Mode {
+    EXP_KEY = 0,    // expect a key or '}'
+    EXP_COLON = 1,  // expect ':'
+    EXP_VALUE = 2,  // expect a value
+    EXP_COMMA = 3   // expect ',' or '}'
+};
+
+vector<int> modeStack;
+int mode = EXP_KEY;
+int depth = 0;
+int atStart = 1;
+int completed = 0;
+
+void fail(const string& msg) {
+    cout << msg << endl;
+    exit(0);
+}
+
+void ensureOpen() {
+    if (completed || depth == 0) fail("Error: invalid dictionary key");
+}
+
+void handleString() {
+    ensureOpen();
+    if (mode == EXP_KEY) { mode = EXP_COLON; return; }
+    if (mode == EXP_VALUE) { mode = EXP_COMMA; return; }
+    if (mode == EXP_COMMA) fail("Error: missing pair separator");
+    fail("Error: invalid dictionary key");
+}
+
+void handleInt() {
+    ensureOpen();
+    if (mode == EXP_KEY) { mode = EXP_COLON; return; }
+    if (mode == EXP_VALUE) { mode = EXP_COMMA; return; }
+    if (mode == EXP_COMMA) fail("Error: missing pair separator");
+    fail("Error: invalid dictionary key");
+}
+
+void handleKeyword(const string& name) {
+    ensureOpen();
+    if (mode == EXP_VALUE) {
+        if (name == "True" || name == "False" || name == "None") { mode = EXP_COMMA; return; }
+        fail("Error: invalid dictionary key");
+    }
+    if (mode == EXP_COMMA) fail("Error: missing pair separator");
+    fail("Error: invalid dictionary key");
+}
+
+void handleOpenBrace() {
+    if (completed) fail("Error: invalid dictionary key");
+    if (atStart) {
+        atStart = 0;
+        mode = EXP_KEY;
+        depth = 1;
+        return;
+    }
+    if (mode == EXP_VALUE) {
+        modeStack.push_back(EXP_COMMA);
+        mode = EXP_KEY;
+        depth++;
+        return;
+    }
+    fail("Error: invalid dictionary key");
+}
+
+void handleCloseBrace() {
+    if (depth == 0) fail("Error: invalid dictionary key");
+    if (mode != EXP_COMMA && mode != EXP_KEY) fail("Error: missing pair separator");
+    depth--;
+    if (depth == 0) {
+        completed = 1;
+        mode = EXP_COMMA;
+    } else {
+        mode = modeStack.back();
+        modeStack.pop_back();
+    }
+}
+
+%}
+
+%x STRD STRS
+
+%%
+
+ /* flex rules driving dictionary validation */
+[ \t\n]+              ;
+"{"                   { handleOpenBrace(); }
+"}"                   { handleCloseBrace(); }
+":"                   { ensureOpen(); if (mode == EXP_COLON) { mode = EXP_VALUE; } else fail("Error: missing pair separator"); }
+","                   { ensureOpen(); if (mode == EXP_COMMA) { mode = EXP_KEY; } else fail("Error: missing pair separator"); }
+
+-?[0-9]+              { handleInt(); }
+
+[a-zA-Z_][a-zA-Z0-9_]* { handleKeyword(yytext); }
+
+\"                    { BEGIN(STRD); }
+\'                    { BEGIN(STRS); }
+
+<STRD>{
+    \\.               ;
+    \"                { BEGIN(INITIAL); handleString(); }
+    .                 ;
+    \n                { fail("Error: unterminated string"); }
+    <<EOF>>           { fail("Error: unterminated string"); }
+}
+
+<STRS>{
+    \\.               ;
+    \'                { BEGIN(INITIAL); handleString(); }
+    .                 ;
+    \n                { fail("Error: unterminated string"); }
+    <<EOF>>           { fail("Error: unterminated string"); }
+}
+
+.                     { fail("Error: invalid dictionary key"); }
+
+<<EOF>> {
+    if (depth > 0) fail("Error: unmatched {");
+    if (!atStart && completed) { cout << "Valid Python Dictionary" << endl; yyterminate(); }
+    fail("Error: invalid dictionary key");
+}
+
+%%
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        cerr << "Usage: " << argv[0] << " <input_file>" << endl;
+        return 1;
+    }
+    yyin = fopen(argv[1], "r");
+    if (!yyin) {
+        cerr << "Cannot open input file: " << argv[1] << endl;
+        return 1;
+    }
+    yylex();
+    return 0;
+}
+```
+
+---
+
+# Build Commands
+
+```sh
+# A1
+flex -o a1.c 2205040_A1.l && g++ -o a1 a1.c
+
+# B1 (needs the headers)
+flex -o b1.c 2205040_B1.l && g++ -o b1 b1.c -I.
+
+# C1
+flex -o c1.c 2205040_C1.l && g++ -o c1 c1.c
+```
+
+Run each program with an input file: `./a1 input.txt`. See `howtorunandtest.md` for the
+full test procedure.

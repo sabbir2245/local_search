@@ -1,166 +1,148 @@
-#ifndef SYMBOL_TABLE_CPP
-#define SYMBOL_TABLE_CPP
+#ifndef SYMTABLE_H
+#define SYMTABLE_H
 
+#include <string>
 #include <iostream>
 #include <vector>
-#include <list>
-#include <string>
-#include <utility>
+#include "general.h"
 
 using namespace std;
 
+unsigned int sdbmHash(const string& p, int mod) {
+    unsigned int hash = 0;
+    auto *str = (const unsigned char *)p.c_str();
+    int c{};
+    while ((c = *str++)) {
+        hash = (c + (hash << 6) + (hash << 16) - hash) % mod;
+    }
+    return hash;
+}
+
 class SymbolInfo {
-public:
     string name;
     string type;
-    SymbolInfo() {}
-    SymbolInfo(const string& n, const string& t) : name(n), type(t) {}
+public:
+    SymbolInfo() : name(""), type("") {}
+    SymbolInfo(const string& name, const string& type) : name(name), type(type) {}
+    string getName() const { return name; }
+    string getType() const { return type; }
 };
 
 class ScopeTable {
-private:
-    int id;
-    int bucketCount;
-    vector<list<SymbolInfo>> table;
-    int totalSymbols;
-    ScopeTable* parentScope;
+    mylist<SymbolInfo>* buckets;
+    int totalBuckets;
+    string scopeId;
+    ScopeTable* parent;
+    int childCount;
 
 public:
-    ScopeTable(int n, int scopeId) {
-        bucketCount = n;
-        id = scopeId;
-        table.resize(bucketCount);
-        totalSymbols = 0;
-        parentScope = nullptr;
+    ScopeTable(int nBuckets, const string& id, ScopeTable* p)
+        : totalBuckets(nBuckets), scopeId(id), parent(p), childCount(0) {
+        buckets = new mylist<SymbolInfo>[totalBuckets];
     }
 
-    int getId() const { return id; }
+    string getId() const { return scopeId; }
+    ScopeTable* getParent() const { return parent; }
+    int getNextChildNum() { return ++childCount; }
 
-    void setParentScope(ScopeTable* p) { parentScope = p; }
-    ScopeTable* getParentScope() const { return parentScope; }
-
-    int hashFunc(const string& name) const {
-        int h = 0;
-        for (size_t i = 0; i < name.size(); i++) {
-            h = (h + name[i]) % bucketCount;
-        }
-        return h;
-    }
-
-    // returns position in the list, -1 if not found
-    int Lookup(const string& name) const {
-        int idx = hashFunc(name);
+    pair<int,int> Insert(const string& name, const string& type) {
+        unsigned int idx = sdbmHash(name, totalBuckets);
         int pos = 0;
-        for (auto it = table[idx].begin(); it != table[idx].end(); ++it, ++pos) {
-            if (it->name == name) return pos;
+        for (auto it = buckets[idx].begin(); it != buckets[idx].end(); ++it) {
+            pos++;
+            if (it->getName() == name) return {-1, -1};
         }
-        return -1;
+        buckets[idx].push_back(SymbolInfo(name, type));
+        return {(int)idx + 1, pos + 1};
     }
 
-    bool Insert(const string& name, const string& type) {
-        if (Lookup(name) != -1) return false;
-        int idx = hashFunc(name);
-        table[idx].push_back(SymbolInfo(name, type));
-        totalSymbols++;
-        return true;
-    }
-
-    bool Remove(const string& name) {
-        int idx = hashFunc(name);
-        for (auto it = table[idx].begin(); it != table[idx].end(); ++it) {
-            if (it->name == name) {
-                table[idx].erase(it);
-                totalSymbols--;
-                return true;
-            }
+    pair<int,int> Lookup(const string& name) {
+        unsigned int idx = sdbmHash(name, totalBuckets);
+        int pos = 0;
+        for (auto it = buckets[idx].begin(); it != buckets[idx].end(); ++it) {
+            pos++;
+            if (it->getName() == name) return {(int)idx + 1, pos};
         }
-        return false;
+        return {-1, -1};
     }
 
-    void Print(ostream& out) const {
-        out << "ScopeTable # " << id << endl;
-        for (int i = 0; i < bucketCount; i++) {
-            out << "  " << i << " --> ";
+    void PrintNonEmpty(ostream& out) {
+        for (int i = 0; i < totalBuckets; i++) {
             bool first = true;
-            for (auto it = table[i].begin(); it != table[i].end(); ++it) {
-                if (!first) out << " --> ";
-                out << "< " << it->name << " : " << it->type << " >";
-                first = false;
+            string bucketLine;
+            for (auto it = buckets[i].begin(); it != buckets[i].end(); ++it) {
+                if (first) {
+                    bucketLine += to_string(i + 1) + " --> < " + it->getName() + " : " + it->getType() + " >";
+                    first = false;
+                } else {
+                    bucketLine += "< " + it->getName() + " : " + it->getType() + " >";
+                }
             }
-            out << endl;
+            if (!first) out << bucketLine << endl;
         }
     }
 
-    int getTotalSymbols() const { return totalSymbols; }
+    ~ScopeTable() { delete[] buckets; }
 };
 
 class SymbolTable {
-private:
-    int bucketCount;
-    ScopeTable* currentScope;
-    int currentScopeId;
+    ScopeTable* current;
+    int bucketSize;
 
 public:
-    SymbolTable(int n) {
-        bucketCount = n;
-        currentScopeId = 1;
-        currentScope = new ScopeTable(bucketCount, currentScopeId);
-    }
-
-    ~SymbolTable() {
-        ScopeTable* cur = currentScope;
-        while (cur != nullptr) {
-            ScopeTable* parent = cur->getParentScope();
-            delete cur;
-            cur = parent;
-        }
+    SymbolTable(int bs) : current(nullptr), bucketSize(bs) {
+        current = new ScopeTable(bucketSize, "1", nullptr);
     }
 
     void EnterScope() {
-        currentScopeId++;
-        ScopeTable* newScope = new ScopeTable(bucketCount, currentScopeId);
-        newScope->setParentScope(currentScope);
-        currentScope = newScope;
+        if (!current) return;
+        int childNum = current->getNextChildNum();
+        string newId = current->getId() + "." + to_string(childNum);
+        current = new ScopeTable(bucketSize, newId, current);
     }
+
+    string getCurrentId() const { return current ? current->getId() : "?"; }
 
     void ExitScope() {
-        if (currentScope->getParentScope() != nullptr) {
-            ScopeTable* parent = currentScope->getParentScope();
-            delete currentScope;
-            currentScope = parent;
+        if (!current) return;
+        ScopeTable* temp = current;
+        current = current->getParent();
+        delete temp;
+    }
+
+    pair<int,int> Insert(const string& name, const string& type) {
+        if (!current) return {-1, -1};
+        return current->Insert(name, type);
+    }
+
+    pair<int,int> LookupAll(const string& name) {
+        ScopeTable* s = current;
+        while (s) {
+            auto res = s->Lookup(name);
+            if (res.first != -1) return res;
+            s = s->getParent();
         }
+        return {-1, -1};
     }
 
-    int getCurrentId() const { return currentScopeId; }
-
-    bool Insert(const string& name, const string& type) {
-        return currentScope->Insert(name, type);
-    }
-
-    // returns pair of (position, scopeId); (-1, -1) if not found
-    pair<int, int> LookupAll(const string& name) const {
-        ScopeTable* cur = currentScope;
-        while (cur != nullptr) {
-            int pos = cur->Lookup(name);
-            if (pos != -1) return make_pair(pos, cur->getId());
-            cur = cur->getParentScope();
-        }
-        return make_pair(-1, -1);
-    }
-
-    void PrintCurrent(ostream& out) const {
-        currentScope->Print(out);
-    }
-
-    void PrintAll(ostream& out) const {
+    void PrintAll(ostream& out) {
         vector<ScopeTable*> scopes;
-        ScopeTable* cur = currentScope;
-        while (cur != nullptr) {
-            scopes.push_back(cur);
-            cur = cur->getParentScope();
+        ScopeTable* s = current;
+        while (s) {
+            scopes.push_back(s);
+            s = s->getParent();
         }
-        for (int i = (int)scopes.size() - 1; i >= 0; i--) {
-            scopes[i]->Print(out);
+        for (auto* sc : scopes) {
+            out << "ScopeTable # " << sc->getId() << endl;
+            sc->PrintNonEmpty(out);
+        }
+    }
+
+    ~SymbolTable() {
+        while (current) {
+            ScopeTable* temp = current;
+            current = current->getParent();
+            delete temp;
         }
     }
 };

@@ -27,7 +27,7 @@ void report(const string& msg) {
 
 %%
 
-/* =============== critical: tag matching with a stack =============== */
+ /* =============== critical: tag matching with a stack =============== */
 <INITIAL><<EOF>> {
     if (!tagStack.empty()) {
         report("Invalid XML: missing closing tag for <" + tagStack.back() + ">");

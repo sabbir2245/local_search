@@ -93,7 +93,7 @@ void handleCloseBrace() {
 
 %%
 
-/* =============== critical: flex rules driving dictionary validation =============== */
+ /* =============== critical: flex rules driving dictionary validation =============== */
 [ \t\n]+              ;
 "{"                   { handleOpenBrace(); }
 "}"                   { handleCloseBrace(); }
