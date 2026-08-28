@@ -156,6 +156,34 @@ bool PeepholeOptimizer::isConsecutiveLabels(const string& line1, const string& l
     return isLabel(line1) && isLabel(line2);
 }
 
+string PeepholeOptimizer::getLabelName(const string& line) {
+    string trimmed = trim(line);
+    if (!trimmed.empty() && trimmed.back() == ':') {
+        return trimmed.substr(0, trimmed.size() - 1);
+    }
+    return "";
+}
+
+bool PeepholeOptimizer::isLabelReferenced(const string& label) {
+    string normLabel = label;
+    transform(normLabel.begin(), normLabel.end(), normLabel.begin(), ::toupper);
+    for (const string& line : lines) {
+        string trimmed = trim(line);
+        if (trimmed.empty() || trimmed[0] == ';') continue;
+        string norm = normalizeInstruction(trimmed);
+        if (norm.empty()) continue;
+        string labelDef = normalizeInstruction(label + ":");
+        if (norm == labelDef) continue;
+        size_t pos = norm.find(normLabel);
+        if (pos == string::npos) continue;
+        size_t end = pos + normLabel.size();
+        bool afterOk = (end >= norm.size()) || (norm[end] == ' ') || (norm[end] == ',') || (norm[end] == ':');
+        bool beforeOk = (pos == 0) || (norm[pos - 1] == ' ') || (norm[pos - 1] == ',');
+        if (beforeOk && afterOk) return true;
+    }
+    return false;
+}
+
 void PeepholeOptimizer::loadFile(const string& inputFileName) {
     ifstream inFile(inputFileName);
     if (!inFile.is_open()) {
@@ -210,17 +238,19 @@ void PeepholeOptimizer::optimize() {
                 continue;
             }
 
-            // Rule (iv): Consecutive labels (keep first, remove rest)
+            // Rule (iv): Consecutive labels (keep first, remove unreferenced ones)
             if (i + 1 < lines.size() && !removed[i + 1]) {
                 if (isConsecutiveLabels(lines[i], lines[i + 1])) {
-                    // Remove the second label (and any more consecutive labels)
                     size_t j = i + 1;
                     while (j < lines.size() && isLabel(lines[j])) {
-                        removed[j] = true;
-                        optimizationsCount++;
+                        string lbl = getLabelName(lines[j]);
+                        if (!lbl.empty() && !isLabelReferenced(lbl)) {
+                            removed[j] = true;
+                            optimizationsCount++;
+                            changed = true;
+                        }
                         j++;
                     }
-                    changed = true;
                     continue;
                 }
             }

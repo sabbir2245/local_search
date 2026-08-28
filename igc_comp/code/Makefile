@@ -6,7 +6,7 @@
 # Tools
 ANTLR_JAR = antlr-4.13.1-complete.jar
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra
+CXXFLAGS = -std=c++17 -Wall -Wextra -I/usr/local/include/antlr4-runtime
 JAVA = java
 
 # ANTLR generated files
@@ -37,7 +37,7 @@ antlr:
 
 # Compile the compiler
 $(TARGET): $(OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^ -lantlr4-runtime
+	$(CXX) $(CXXFLAGS) -o $@ $^ -L/usr/local/lib -lantlr4-runtime
 
 # Compile individual object files
 main.o: main.cpp C4Lexer.h C4Parser.h CodeGenarator.h PeepholeOptimizer.h

@@ -21,6 +21,8 @@ private:
     bool isRedundantArithmetic(const string& line);
     bool isConsecutiveLabels(const string& line1, const string& line2);
     string normalizeInstruction(const string& line);
+    string getLabelName(const string& line);
+    bool isLabelReferenced(const string& label);
 
 public:
     PeepholeOptimizer();
