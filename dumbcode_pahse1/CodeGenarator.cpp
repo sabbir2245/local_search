@@ -30,10 +30,6 @@ void CodeGenarator::emit(const string& instruction) {
     (*out) << "    " << instruction << endl;
 }
 
-void CodeGenarator::emitWithComment(const string& instruction, const string& comment) {
-    (*out) << "    " << instruction << "    ; " << comment << endl;
-}
-
 string CodeGenarator::getOperandAddr(SymbolInfo* sym) {
     if (sym->getIsGlobal()) {
         return "[" + sym->getName() + "]";
@@ -44,14 +40,6 @@ string CodeGenarator::getOperandAddr(SymbolInfo* sym) {
     } else {
         return "[EBP-" + to_string(-offset) + "]";
     }
-}
-
-string CodeGenarator::getArrayAddr(SymbolInfo* sym, const string& indexReg) {
-    if (sym->getIsGlobal()) {
-        return "[" + sym->getName() + " + " + indexReg + "]";
-    }
-    int baseOffset = sym->getStackOffset();
-    return "[EBP + " + indexReg + " - " + to_string(baseOffset) + "]";
 }
 
 string CodeGenarator::relOpToJump(const string& op, bool negate) {
@@ -190,8 +178,6 @@ antlrcpp::Any CodeGenarator::visitStart(C4Parser::StartContext* ctx) {
 }
 
 antlrcpp::Any CodeGenarator::visitProgram(C4Parser::ProgramContext* ctx) {
-    // program is left-recursive: program unit | unit
-    // Walk the chain recursively to visit all units left-to-right
     auto collectUnits = [&](auto&& self, C4Parser::ProgramContext* p) -> void {
         if (p->program()) {
             self(self, p->program());
@@ -238,7 +224,6 @@ antlrcpp::Any CodeGenarator::visitFunc_declaration(C4Parser::Func_declarationCon
     string returnType = ctx->type_specifier()->getText();
     int numParams = 0;
     if (ctx->parameter_list()) {
-        // Walk the parameter_list chain to count params
         auto countParams = [&](auto&& self, C4Parser::Parameter_listContext* pl) -> int {
             int c = 0;
             if (pl->parameter_list()) {
@@ -258,7 +243,6 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
     string returnType = ctx->type_specifier()->getText();
     currentFunctionName = funcName;
 
-    // Count parameters by walking the chain
     paramCount = 0;
     if (ctx->parameter_list()) {
         auto countParams = [&](auto&& self, C4Parser::Parameter_listContext* pl) -> int {
@@ -275,7 +259,6 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
     symbolTable.insert(funcName, returnType);
     symbolTable.enterScope();
 
-    // Add parameters to scope
     int paramOffset = 8;
     if (ctx->parameter_list()) {
         vector<pair<string, string>> params;
@@ -301,11 +284,6 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
         }
     }
 
-    // The number of bytes needed for locals is only known after the body has
-    // been generated (declarations are discovered as we walk statements), but
-    // the prologue's "SUB ESP, localSize" must appear before the body. So we
-    // generate the body into a temporary buffer first, then emit the real
-    // prologue (now that localSize is known) followed by the buffered body.
     ostringstream bodyBuffer;
     ostream* savedOut = out;
     out = &bodyBuffer;
@@ -365,26 +343,13 @@ antlrcpp::Any CodeGenarator::visitVar_declaration(C4Parser::Var_declarationConte
     for (auto& decl : declarations) {
         if (isGlobal) {
             dataSegmentGlobals.push_back(decl.first);
-            if (decl.second > 0) {
-                SymbolInfo* sym = new SymbolInfo(decl.first, type);
-                sym->setIdentityType("ARRAY");
-                sym->setArraySize(decl.second);
-                sym->setIsGlobal(true);
-                sym->setStackOffset(0);
-                symbolTable.insert(sym);
-            } else {
-                SymbolInfo* sym = new SymbolInfo(decl.first, type);
-                sym->setIdentityType("VAR");
-                sym->setIsGlobal(true);
-                sym->setStackOffset(0);
-                symbolTable.insert(sym);
-            }
+            SymbolInfo* sym = new SymbolInfo(decl.first, type);
+            sym->setIdentityType("VAR");
+            sym->setIsGlobal(true);
+            sym->setStackOffset(0);
+            symbolTable.insert(sym);
         } else {
-            if (decl.second > 0) {
-                symbolTable.allocateLocalArray(decl.first, type, decl.second);
-            } else {
-                symbolTable.allocateLocalVar(decl.first, type);
-            }
+            symbolTable.allocateLocalVar(decl.first, type);
         }
     }
     return nullptr;
@@ -399,8 +364,6 @@ antlrcpp::Any CodeGenarator::visitDeclaration_list(C4Parser::Declaration_listCon
 }
 
 antlrcpp::Any CodeGenarator::visitStatements(C4Parser::StatementsContext* ctx) {
-    // statements is left-recursive: statements statement | statement
-    // Walk chain to visit all statements left-to-right
     if (ctx->statements()) {
         visit(ctx->statements());
     }
@@ -411,83 +374,11 @@ antlrcpp::Any CodeGenarator::visitStatements(C4Parser::StatementsContext* ctx) {
 antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
     if (ctx->var_declaration()) {
         visit(ctx->var_declaration());
-    } else if (ctx->FOR()) {
-        // FOR LPAREN expression_statement expression_statement expression RPAREN statement
-        // NOTE: checked before the generic expression_statement branch below,
-        // because a FOR node also contains expression_statement children
-        // (the init and condition) and would otherwise be misclassified as
-        // a plain expression statement, silently dropping the loop.
-        string startLabel = newLabel("for_start");
-        string endLabel = newLabel("for_end");
-        string bodyLabel = newLabel("for_body");
-
-        symbolTable.enterScope();
-
-        auto exprStmts = ctx->expression_statement();
-        // Initializer
-        if (exprStmts.size() > 0) {
-            visit(exprStmts[0]);
-        }
-
-        (*out) << startLabel << ":" << endl;
-
-        // Condition
-        if (exprStmts.size() > 1) {
-            visit(exprStmts[1]);
-            emit("TEST EAX, EAX");
-            emit("JE   " + endLabel);
-        }
-
-        // Body
-        visit(ctx->statement(0));
-
-        // Increment
-        if (ctx->expression()) {
-            visit(ctx->expression());
-        }
-
-        emit("JMP  " + startLabel);
-        (*out) << endLabel << ":" << endl;
-
-        symbolTable.exitScope();
     } else if (!ctx->expression_statement().empty()) {
         visit(ctx->expression_statement(0));
     } else if (ctx->compound_statement()) {
         symbolTable.enterScope();
         visit(ctx->compound_statement());
-        symbolTable.exitScope();
-    } else if (ctx->IF() && !ctx->ELSE()) {
-        string endLabel = newLabel("if_end");
-        visit(ctx->expression());
-        emit("TEST EAX, EAX");
-        emit("JE   " + endLabel);
-        visit(ctx->statement(0));
-        (*out) << endLabel << ":" << endl;
-    } else if (ctx->IF() && ctx->ELSE()) {
-        string elseLabel = newLabel("if_else");
-        string endLabel = newLabel("if_end");
-        visit(ctx->expression());
-        emit("TEST EAX, EAX");
-        emit("JE   " + elseLabel);
-        visit(ctx->statement(0));
-        emit("JMP  " + endLabel);
-        (*out) << elseLabel << ":" << endl;
-        visit(ctx->statement(1));
-        (*out) << endLabel << ":" << endl;
-    } else if (ctx->WHILE()) {
-        string startLabel = newLabel("while_start");
-        string endLabel = newLabel("while_end");
-
-        symbolTable.enterScope();
-
-        (*out) << startLabel << ":" << endl;
-        visit(ctx->expression());
-        emit("TEST EAX, EAX");
-        emit("JE   " + endLabel);
-        visit(ctx->statement(0));
-        emit("JMP  " + startLabel);
-        (*out) << endLabel << ":" << endl;
-
         symbolTable.exitScope();
     } else if (ctx->PRINTLN()) {
         string varName = ctx->ID()->getText();
@@ -514,24 +405,6 @@ antlrcpp::Any CodeGenarator::visitExpression_statement(C4Parser::Expression_stat
 }
 
 antlrcpp::Any CodeGenarator::visitVariable(C4Parser::VariableContext* ctx) {
-    string varName = ctx->ID()->getText();
-    SymbolInfo* sym = symbolTable.lookUp(varName);
-    if (!sym) return nullptr;
-
-    if (ctx->expression()) {
-        visit(ctx->expression());
-        emit("MOV  EBX, 4");
-        emit("MUL  EBX");
-
-        if (sym->getIsGlobal()) {
-            emit("MOV  EAX, [" + sym->getName() + " + EAX]");
-        } else {
-            int baseOffset = sym->getStackOffset();
-            emit("SUB  EAX, " + to_string(baseOffset));
-            emit("NEG  EAX");
-            emit("MOV  EAX, [EBP + EAX]");
-        }
-    }
     return nullptr;
 }
 
@@ -541,31 +414,11 @@ antlrcpp::Any CodeGenarator::visitExpression(C4Parser::ExpressionContext* ctx) {
         SymbolInfo* sym = symbolTable.lookUp(varName);
         if (!sym) return nullptr;
 
-        if (sym->getIdentityType() == "ARRAY" && ctx->variable()->expression()) {
-            visit(ctx->variable()->expression());
-            emit("MOV  EBX, 4");
-            emit("MUL  EBX");
-            emit("PUSH EAX");
-
-            visit(ctx->logic_expression());
-
-            emit("POP  EBX");
-
-            if (sym->getIsGlobal()) {
-                emit("MOV  [" + sym->getName() + " + EBX], EAX");
-            } else {
-                int baseOffset = sym->getStackOffset();
-                emit("SUB  EBX, " + to_string(baseOffset));
-                emit("NEG  EBX");
-                emit("MOV  [EBP + EBX], EAX");
-            }
+        visit(ctx->logic_expression());
+        if (sym->getIsGlobal()) {
+            emit("MOV  [" + sym->getName() + "], EAX");
         } else {
-            visit(ctx->logic_expression());
-            if (sym->getIsGlobal()) {
-                emit("MOV  [" + sym->getName() + "], EAX");
-            } else {
-                emit("MOV  " + getOperandAddr(sym) + ", EAX");
-            }
+            emit("MOV  " + getOperandAddr(sym) + ", EAX");
         }
     } else {
         visit(ctx->logic_expression());
@@ -635,16 +488,14 @@ antlrcpp::Any CodeGenarator::visitRel_expression(C4Parser::Rel_expressionContext
 
 antlrcpp::Any CodeGenarator::visitSimple_expression(C4Parser::Simple_expressionContext* ctx) {
     if (ctx->simple_expression()) {
-        // Left-recursive: simple_expression ADDOP term
-        visit(ctx->simple_expression()); // left in EAX
+        visit(ctx->simple_expression());
         emit("PUSH EAX");
-        visit(ctx->term()); // right in EAX
+        visit(ctx->term());
         emit("POP  EBX");
         string op = ctx->ADDOP()->getText();
         if (op == "+") {
             emit("ADD  EAX, EBX");
         } else {
-            // EAX = right, EBX = left; we want left - right
             emit("XCHG EAX, EBX");
             emit("SUB  EAX, EBX");
         }
@@ -656,10 +507,9 @@ antlrcpp::Any CodeGenarator::visitSimple_expression(C4Parser::Simple_expressionC
 
 antlrcpp::Any CodeGenarator::visitTerm(C4Parser::TermContext* ctx) {
     if (ctx->term()) {
-        // Left-recursive: term MULOP unary_expression
-        visit(ctx->term()); // left in EAX
+        visit(ctx->term());
         emit("PUSH EAX");
-        visit(ctx->unary_expression()); // right in EAX
+        visit(ctx->unary_expression());
         emit("POP  EBX");
         string op = ctx->MULOP()->getText();
         if (op == "*") {
@@ -687,17 +537,6 @@ antlrcpp::Any CodeGenarator::visitUnary_expression(C4Parser::Unary_expressionCon
         if (op == "-") {
             emit("NEG  EAX");
         }
-    } else if (ctx->NOT()) {
-        visit(ctx->unary_expression());
-        string trueLabel = newLabel("not_true");
-        string endLabel = newLabel("not_end");
-        emit("TEST EAX, EAX");
-        emit("JNE  " + trueLabel);
-        emit("MOV  EAX, 1");
-        emit("JMP  " + endLabel);
-        (*out) << trueLabel << ":" << endl;
-        emit("MOV  EAX, 0");
-        (*out) << endLabel << ":" << endl;
     } else {
         visit(ctx->factor());
     }
@@ -711,86 +550,18 @@ antlrcpp::Any CodeGenarator::visitFactor(C4Parser::FactorContext* ctx) {
 
         if (ctx->INCOP() || ctx->DECOP()) {
             bool isInc = ctx->INCOP() != nullptr;
-            if (sym && sym->getIdentityType() == "ARRAY" && ctx->variable()->expression()) {
-                visit(ctx->variable()->expression());
-                emit("MOV  EBX, 4");
-                emit("MUL  EBX");
-                emit("MOV  ECX, EAX");
-
-                if (sym->getIsGlobal()) {
-                    emit("MOV  EAX, [" + sym->getName() + " + ECX]");
-                } else {
-                    int baseOffset = sym->getStackOffset();
-                    emit("MOV  EDX, ECX");
-                    emit("SUB  EDX, " + to_string(baseOffset));
-                    emit("NEG  EDX");
-                    emit("MOV  EAX, [EBP + EDX]");
-                }
-                emit("PUSH EAX");
-
-                string op = isInc ? "INC" : "DEC";
-                if (sym->getIsGlobal()) {
-                    emit(op + "  dword [" + sym->getName() + " + ECX]");
-                } else {
-                    int baseOffset = sym->getStackOffset();
-                    emit("MOV  EDX, ECX");
-                    emit("SUB  EDX, " + to_string(baseOffset));
-                    emit("NEG  EDX");
-                    emit(op + "  dword [EBP + EDX]");
-                }
-                emit("POP  EAX");
-            } else {
-                emit("MOV  EAX, " + getOperandAddr(sym));
-                emit("PUSH EAX");
-                string op = isInc ? "INC" : "DEC";
-                emit(op + "  dword " + getOperandAddr(sym));
-                emit("POP  EAX");
-            }
+            emit("MOV  EAX, " + getOperandAddr(sym));
+            emit("PUSH EAX");
+            string op = isInc ? "INC" : "DEC";
+            emit(op + "  dword " + getOperandAddr(sym));
+            emit("POP  EAX");
         } else {
-            visit(ctx->variable());
             if (sym) {
                 emit("MOV  EAX, " + getOperandAddr(sym));
             }
         }
-    } else if (ctx->ID() && ctx->argument_list()) {
-        string funcName = ctx->ID()->getText();
-
-        int numArgs = 0;
-        if (ctx->argument_list()->arguments()) {
-            auto countArgs = [&](auto&& self, C4Parser::ArgumentsContext* a) -> int {
-                int c = 1;
-                if (a->arguments()) {
-                    c += self(self, a->arguments());
-                }
-                return c;
-            };
-            numArgs = countArgs(countArgs, ctx->argument_list()->arguments());
-
-            vector<C4Parser::Logic_expressionContext*> argExprs;
-            auto collectArgs = [&](auto&& self, C4Parser::ArgumentsContext* a) -> void {
-                if (a->arguments()) {
-                    self(self, a->arguments());
-                }
-                argExprs.push_back(a->logic_expression());
-            };
-            collectArgs(collectArgs, ctx->argument_list()->arguments());
-
-            for (int i = (int)argExprs.size() - 1; i >= 0; i--) {
-                visit(argExprs[i]);
-                emit("PUSH EAX");
-            }
-        }
-
-        emit("CALL " + funcName);
-        // NOTE: no ADD ESP here — the callee already cleans up its
-        // parameters via "RET <paramSize>" in generateFunctionEpilogue().
-        // Doing both was double-popping the stack.
-    } else if (ctx->LPAREN()) {
-        visit(ctx->expression());
     } else if (ctx->CONST_INT()) {
         emit("MOV  EAX, " + ctx->CONST_INT()->getText());
-    } else if (ctx->CONST_FLOAT()) {
-        emit("MOV  EAX, 0  ; float constant ignored");
     }
     return nullptr;
 }
