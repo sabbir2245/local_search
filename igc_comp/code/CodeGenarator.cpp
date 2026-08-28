@@ -10,6 +10,7 @@ CodeGenarator::CodeGenarator(const string& outputFileName)
     if (!asmFile.is_open()) {
         cerr << "Error: Cannot open output file " << outputFileName << endl;
     }
+    out = &asmFile;
 }
 
 CodeGenarator::~CodeGenarator() {
@@ -25,11 +26,11 @@ string CodeGenarator::newLabel(const string& prefix) {
 }
 
 void CodeGenarator::emit(const string& instruction) {
-    asmFile << "    " << instruction << endl;
+    (*out) << "    " << instruction << endl;
 }
 
 void CodeGenarator::emitWithComment(const string& instruction, const string& comment) {
-    asmFile << "    " << instruction << "    ; " << comment << endl;
+    (*out) << "    " << instruction << "    ; " << comment << endl;
 }
 
 string CodeGenarator::getOperandAddr(SymbolInfo* sym) {
@@ -49,19 +50,19 @@ string CodeGenarator::getArrayAddr(SymbolInfo* sym, const string& indexReg) {
 
 string CodeGenarator::relOpToJump(const string& op, bool negate) {
     if (!negate) {
-        if (op == "==") return "JNE";
-        if (op == "!=") return "JE";
-        if (op == "<")  return "JGE";
-        if (op == ">")  return "JLE";
-        if (op == "<=") return "JG";
-        if (op == ">=") return "JL";
-    } else {
         if (op == "==") return "JE";
         if (op == "!=") return "JNE";
         if (op == "<")  return "JL";
         if (op == ">")  return "JG";
         if (op == "<=") return "JLE";
         if (op == ">=") return "JGE";
+    } else {
+        if (op == "==") return "JNE";
+        if (op == "!=") return "JE";
+        if (op == "<")  return "JGE";
+        if (op == ">")  return "JLE";
+        if (op == "<=") return "JG";
+        if (op == ">=") return "JL";
     }
     return "JMP";
 }
@@ -71,7 +72,7 @@ string CodeGenarator::relOpToJump(const string& op, bool negate) {
 // ==========================================
 
 void CodeGenarator::generateHeader() {
-    asmFile << "format ELF executable 3" << endl;
+    asmFile << "format ELF executable" << endl;
     asmFile << "entry main" << endl;
 }
 
@@ -266,7 +267,6 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
     }
 
     symbolTable.insert(funcName, returnType);
-    generateFunctionPrologue(funcName);
     symbolTable.enterScope();
 
     // Add parameters to scope
@@ -295,11 +295,28 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
         }
     }
 
+    // The number of bytes needed for locals is only known after the body has
+    // been generated (declarations are discovered as we walk statements), but
+    // the prologue's "SUB ESP, localSize" must appear before the body. So we
+    // generate the body into a temporary buffer first, then emit the real
+    // prologue (now that localSize is known) followed by the buffered body.
+    ostringstream bodyBuffer;
+    ostream* savedOut = out;
+    out = &bodyBuffer;
+
     visit(ctx->compound_statement());
 
     ScopeTable* funcScope = symbolTable.getCurrentScope();
     int localSize = funcScope->getCurrentStackOffset();
     symbolTable.exitScope();
+
+    out = savedOut;
+
+    generateFunctionPrologue(funcName);
+    if (localSize > 0) {
+        emit("SUB  ESP, " + to_string(localSize));
+    }
+    (*out) << bodyBuffer.str();
 
     generateFunctionEpilogue(funcName, localSize, paramCount * 4);
 
@@ -388,14 +405,12 @@ antlrcpp::Any CodeGenarator::visitStatements(C4Parser::StatementsContext* ctx) {
 antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
     if (ctx->var_declaration()) {
         visit(ctx->var_declaration());
-    } else if (!ctx->expression_statement().empty()) {
-        visit(ctx->expression_statement(0));
-    } else if (ctx->compound_statement()) {
-        symbolTable.enterScope();
-        visit(ctx->compound_statement());
-        symbolTable.exitScope();
     } else if (ctx->FOR()) {
         // FOR LPAREN expression_statement expression_statement expression RPAREN statement
+        // NOTE: checked before the generic expression_statement branch below,
+        // because a FOR node also contains expression_statement children
+        // (the init and condition) and would otherwise be misclassified as
+        // a plain expression statement, silently dropping the loop.
         string startLabel = newLabel("for_start");
         string endLabel = newLabel("for_end");
         string bodyLabel = newLabel("for_body");
@@ -408,7 +423,7 @@ antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
             visit(exprStmts[0]);
         }
 
-        asmFile << startLabel << ":" << endl;
+        (*out) << startLabel << ":" << endl;
 
         // Condition
         if (exprStmts.size() > 1) {
@@ -426,8 +441,14 @@ antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
         }
 
         emit("JMP  " + startLabel);
-        asmFile << endLabel << ":" << endl;
+        (*out) << endLabel << ":" << endl;
 
+        symbolTable.exitScope();
+    } else if (!ctx->expression_statement().empty()) {
+        visit(ctx->expression_statement(0));
+    } else if (ctx->compound_statement()) {
+        symbolTable.enterScope();
+        visit(ctx->compound_statement());
         symbolTable.exitScope();
     } else if (ctx->IF() && !ctx->ELSE()) {
         string endLabel = newLabel("if_end");
@@ -435,7 +456,7 @@ antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
         emit("TEST EAX, EAX");
         emit("JE   " + endLabel);
         visit(ctx->statement(0));
-        asmFile << endLabel << ":" << endl;
+        (*out) << endLabel << ":" << endl;
     } else if (ctx->IF() && ctx->ELSE()) {
         string elseLabel = newLabel("if_else");
         string endLabel = newLabel("if_end");
@@ -444,22 +465,22 @@ antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
         emit("JE   " + elseLabel);
         visit(ctx->statement(0));
         emit("JMP  " + endLabel);
-        asmFile << elseLabel << ":" << endl;
+        (*out) << elseLabel << ":" << endl;
         visit(ctx->statement(1));
-        asmFile << endLabel << ":" << endl;
+        (*out) << endLabel << ":" << endl;
     } else if (ctx->WHILE()) {
         string startLabel = newLabel("while_start");
         string endLabel = newLabel("while_end");
 
         symbolTable.enterScope();
 
-        asmFile << startLabel << ":" << endl;
+        (*out) << startLabel << ":" << endl;
         visit(ctx->expression());
         emit("TEST EAX, EAX");
         emit("JE   " + endLabel);
         visit(ctx->statement(0));
         emit("JMP  " + startLabel);
-        asmFile << endLabel << ":" << endl;
+        (*out) << endLabel << ":" << endl;
 
         symbolTable.exitScope();
     } else if (ctx->PRINTLN()) {
@@ -563,7 +584,7 @@ antlrcpp::Any CodeGenarator::visitLogic_expression(C4Parser::Logic_expressionCon
             emit("JE   " + endLabel);
             emit("MOV  EAX, 1");
             emit("JMP  " + endLabel);
-            asmFile << falseLabel << ":" << endl;
+            (*out) << falseLabel << ":" << endl;
             emit("MOV  EAX, 0");
         } else {
             emit("JNE  " + falseLabel);
@@ -573,10 +594,10 @@ antlrcpp::Any CodeGenarator::visitLogic_expression(C4Parser::Logic_expressionCon
             emit("JE   " + endLabel);
             emit("MOV  EAX, 1");
             emit("JMP  " + endLabel);
-            asmFile << falseLabel << ":" << endl;
+            (*out) << falseLabel << ":" << endl;
             emit("MOV  EAX, 1");
         }
-        asmFile << endLabel << ":" << endl;
+        (*out) << endLabel << ":" << endl;
     } else {
         visit(ctx->rel_expression(0));
     }
@@ -597,9 +618,9 @@ antlrcpp::Any CodeGenarator::visitRel_expression(C4Parser::Rel_expressionContext
         emit(relOpToJump(op) + " " + trueLabel);
         emit("MOV  EAX, 0");
         emit("JMP  " + endLabel);
-        asmFile << trueLabel << ":" << endl;
+        (*out) << trueLabel << ":" << endl;
         emit("MOV  EAX, 1");
-        asmFile << endLabel << ":" << endl;
+        (*out) << endLabel << ":" << endl;
     } else {
         visit(ctx->simple_expression(0));
     }
@@ -668,9 +689,9 @@ antlrcpp::Any CodeGenarator::visitUnary_expression(C4Parser::Unary_expressionCon
         emit("JNE  " + trueLabel);
         emit("MOV  EAX, 1");
         emit("JMP  " + endLabel);
-        asmFile << trueLabel << ":" << endl;
+        (*out) << trueLabel << ":" << endl;
         emit("MOV  EAX, 0");
-        asmFile << endLabel << ":" << endl;
+        (*out) << endLabel << ":" << endl;
     } else {
         visit(ctx->factor());
     }
@@ -755,10 +776,9 @@ antlrcpp::Any CodeGenarator::visitFactor(C4Parser::FactorContext* ctx) {
         }
 
         emit("CALL " + funcName);
-
-        if (numArgs > 0) {
-            emit("ADD  ESP, " + to_string(numArgs * 4));
-        }
+        // NOTE: no ADD ESP here — the callee already cleans up its
+        // parameters via "RET <paramSize>" in generateFunctionEpilogue().
+        // Doing both was double-popping the stack.
     } else if (ctx->LPAREN()) {
         visit(ctx->expression());
     } else if (ctx->CONST_INT()) {

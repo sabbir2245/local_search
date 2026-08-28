@@ -31,7 +31,11 @@ TARGET = icg_compiler
 
 all: $(TARGET)
 
-# Generate ANTLR parser/lexer/visitor from grammar
+# Generate ANTLR parser/lexer/visitor from grammar (auto-run if files missing)
+C4Lexer.cpp C4Lexer.h C4Parser.cpp C4Parser.h C4BaseVisitor.cpp C4BaseVisitor.h C4Visitor.cpp C4Visitor.h: C4.g4
+	$(JAVA) -jar $(ANTLR_JAR) -Dlanguage=Cpp -visitor -no-listener C4.g4
+
+# Convenience target to force regenerate ANTLR files
 antlr:
 	$(JAVA) -jar $(ANTLR_JAR) -Dlanguage=Cpp -visitor -no-listener C4.g4
 
@@ -75,8 +79,11 @@ test: $(TARGET)
 	@echo "=== Recursion 2 ===" && ./$(TARGET) input/recursion2_i.c
 
 # Clean generated files
+# Clean generated files
 clean:
 	rm -f $(OBJ) $(TARGET) code.asm optimized_code.asm
 	rm -f C4Lexer.cpp C4Parser.cpp C4BaseVisitor.cpp C4Visitor.cpp
 	rm -f C4Lexer.h C4Parser.h C4BaseVisitor.h C4Visitor.h
 	rm -f C4.tokens C4Lexer.tokens
+	rm -f C4.interp C4Lexer.interp          # ADD THIS
+	rm -f C4Lexer.o C4Parser.o C4BaseVisitor.o C4Visitor.o  # ADD THIS
