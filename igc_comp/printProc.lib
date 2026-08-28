@@ -1,0 +1,67 @@
+print_number:
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    sub esp, 32             ; local buffer
+
+    test eax, eax
+    jns .positive
+
+    ; print '-'
+    push eax
+
+    sub esp, 1
+    mov byte [esp], '-'
+
+    mov eax, 4              ; sys_write
+    mov ebx, 1              ; stdout
+    mov ecx, esp
+    mov edx, 1
+    int 0x80
+
+    add esp, 1
+    pop eax
+
+    neg eax
+
+.positive:
+    mov ebx, 10
+
+    lea esi, [esp + 31]
+    mov byte [esi], 10
+    dec esi
+
+.convert:
+    xor edx, edx
+    div ebx
+
+    add dl, '0'
+    mov [esi], dl
+    dec esi
+
+    test eax, eax
+    jnz .convert
+
+    inc esi
+
+    lea edx, [esp + 32]
+    sub edx, esi
+
+    mov eax, 4              ; sys_write
+    mov ebx, 1              ; stdout
+    mov ecx, esi
+    int 0x80
+
+    add esp, 32
+
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
