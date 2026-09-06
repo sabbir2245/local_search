@@ -1,2 +1,0 @@
-PASS: test1_i
-
