@@ -23,7 +23,7 @@ For N iterations, every line must follow the exact strict sequence: X - Y - X - 
 
 Solution
 C++
-
+``` cpp
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
@@ -101,7 +101,7 @@ int main() {
     sem_destroy(&semLine);
     return 0;
 }
-
+```
 Problem 2: Strict Majority Threshold Ratio
 
 Problem Statement
@@ -127,7 +127,7 @@ Threads run independently. A line finishes and prints [Iteration X] when the num
 
 Solution
 C++
-
+``` cpp
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
@@ -182,7 +182,7 @@ int main() {
     sem_destroy(&lock);
     return 0;
 }
-
+```
 Problem 3: Arithmetic Growth Per Line
 
 Problem Statement
@@ -207,7 +207,7 @@ For N total lines, line k (starting at line 1) must contain exactly k zeros and 
 
 Solution
 C++
-
+``` cpp
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
@@ -267,7 +267,7 @@ int main() {
     sem_destroy(&lock);
     return 0;
 }
-
+```
 Problem 4: Barrier Synchronization (Equal Batch Printing)
 
 Problem Statement
@@ -286,7 +286,7 @@ In each iteration, each worker thread must print its character exactly twice in 
 
 Solution
 C++
-
+``` cpp
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
@@ -365,7 +365,7 @@ int main() {
     sem_destroy(&semBatch);
     return 0;
 }
-
+```
 Problem 5: Odd-Even Character Length Toggle
 
 Problem Statement
@@ -391,7 +391,7 @@ Implement using one binary semaphore lock.
 
 Solution
 C++
-
+``` cpp
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>

@@ -18,12 +18,9 @@ void* printPQR(void* arg) {
             break;
         }
 
-        bool can_print = false;
-        if (letter == 'P' && p_count < cur_iter) { can_print = true; p_count++; }
-        else if (letter == 'Q' && q_count < cur_iter) { can_print = true; q_count++; }
-        else if (letter == 'R' && r_count < cur_iter) { can_print = true; r_count++; }
-
-        if (can_print) cout << letter;
+        if (letter == 'P' && p_count < cur_iter) { cout << letter; p_count++; }
+        else if (letter == 'Q' && q_count < cur_iter) { cout << letter; q_count++; }
+        else if (letter == 'R' && r_count < cur_iter) { cout << letter; r_count++; }
 
         if (p_count == cur_iter && q_count == cur_iter && r_count == cur_iter) {
             cout << " [iteration " << cur_iter << "]" << endl;

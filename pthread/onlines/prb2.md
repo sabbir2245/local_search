@@ -1,4 +1,20 @@
-Problem 1: Strict Phase-Ordered Pipeline ($T_1 \to T_2 \to T_3$)Problem StatementRun three threads.Thread 1 prints 'A'Thread 2 prints 'B'Thread 3 prints 'C'Threads must execute in strict round-robin order ($A \to B \to C \to A \to B \to C\dots$) for $N$ total cycles. No character may be printed out of turn. Implement without busy-waiting using counting/binary semaphores.Input format: <Number N cycles of>Sample Input: 2Sample Output: ABCABCSolutionC++#include <iostream>
+### Problem 1: Strict Phase-Ordered Pipeline ($T_1 \to T_2 \to T_3$)
+
+**Problem Statement**
+Run three threads.
+Thread 1 prints 'A'
+Thread 2 prints 'B'
+Thread 3 prints 'C'
+Threads must execute in strict round-robin order ($A \to B \to C \to A \to B \to C\dots$) for $N$ total cycles. No character may be printed out of turn. Implement without busy-waiting using counting/binary semaphores.
+
+**Input format:** `<Number N cycles of>`
+**Sample Input:** `2`
+**Sample Output:** `ABCABC`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -56,7 +72,24 @@ int main() {
     sem_destroy(&semC);
     return 0;
 }
-Problem 2: Producer-Consumer with Bounded BufferProblem StatementRun 1 Producer thread and 1 Consumer thread sharing a queue of fixed capacity $K$.Producer generates integers $1, 2, 3 \dots N$ and puts them in the buffer.Consumer pops items from the buffer and prints them.The Producer must block if the buffer is full ($K$ items). The Consumer must block if the buffer is empty ($0$ items). Use empty, full, and mutex semaphores.Input format: <Total N items> <Buffer K capacity>Sample Input: 5 2Sample Output: Produced 1 | Consumed 1 | Produced 2 | Produced 3 | Consumed 2 | Consumed 3 | Produced 4 | Consumed 4 | Produced 5 | Consumed 5SolutionC++#include <iostream>
+```
+
+### Problem 2: Producer-Consumer with Bounded Buffer
+
+**Problem Statement**
+Run 1 Producer thread and 1 Consumer thread sharing a queue of fixed capacity $K$.
+Producer generates integers $1, 2, 3 \dots N$ and puts them in the buffer.
+Consumer pops items from the buffer and prints them.
+The Producer must block if the buffer is full ($K$ items). The Consumer must block if the buffer is empty ($0$ items). Use empty, full, and mutex semaphores.
+
+**Input format:** `<Total N items> <Buffer K capacity>`
+**Sample Input:** `5 2`
+**Sample Output:** `Produced 1 | Consumed 1 | Produced 2 | Produced 3 | Consumed 2 | Consumed 3 | Produced 4 | Consumed 4 | Produced 5 | Consumed 5`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -121,7 +154,25 @@ int main() {
     delete[] buffer;
     return 0;
 }
-Problem 3: First Readers-Writers (Reader Preference)Problem StatementRun $R$ Reader threads and $W$ Writer threads.Multiple readers can read a shared counter at the same time.Only one writer can modify the counter at a time, and NO readers may read while a writer is modifying.Once at least one reader holds access, subsequent readers enter without waiting for writers.Each reader reads once; each writer writes once. Print execution traces safely using semaphores.Input format: <Number R Readers of> <Number W Writers of>Sample Input: 3 1Sample Output: Writer updated data | Reader 1 read data | Reader 2 read data | Reader 3 read dataSolutionC++#include <iostream>
+```
+
+### Problem 3: First Readers-Writers (Reader Preference)
+
+**Problem Statement**
+Run $R$ Reader threads and $W$ Writer threads.
+Multiple readers can read a shared counter at the same time.
+Only one writer can modify the counter at a time, and NO readers may read while a writer is modifying.
+Once at least one reader holds access, subsequent readers enter without waiting for writers.
+Each reader reads once; each writer writes once. Print execution traces safely using semaphores.
+
+**Input format:** `<Number R Readers of> <Number W Writers of>`
+**Sample Input:** `3 1`
+**Sample Output:** `Writer updated data | Reader 1 read data | Reader 2 read data | Reader 3 read data`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -187,7 +238,24 @@ int main() {
     sem_destroy(&mutex);
     return 0;
 }
-Problem 4: Dining Philosophers (Deadlock-Free Resource Hierarchy)Problem Statement5 Philosophers sit at a round table with 5 chopsticks (0 to 4).To eat, a philosopher $i$ needs both chopstick $i$ (left) and chopstick $(i+1)\%5$ (right).Avoid deadlocks by making odd-numbered philosophers pick up the left chopstick first, and even-numbered philosophers pick up the right chopstick first.Run for $N$ eating cycles per philosopher.Input format: <Eating N cycles per philosopher>Sample Input: 1Sample Output: P0 ate | P1 ate | P2 ate | P3 ate | P4 ateSolutionC++#include <iostream>
+```
+
+### Problem 4: Dining Philosophers (Deadlock-Free Resource Hierarchy)
+
+**Problem Statement**
+5 Philosophers sit at a round table with 5 chopsticks (0 to 4).
+To eat, a philosopher $i$ needs both chopstick $i$ (left) and chopstick $(i+1)\%5$ (right).
+Avoid deadlocks by making odd-numbered philosophers pick up the left chopstick first, and even-numbered philosophers pick up the right chopstick first.
+Run for $N$ eating cycles per philosopher.
+
+**Input format:** `<Eating N cycles per philosopher>`
+**Sample Input:** `1`
+**Sample Output:** `P0 ate | P1 ate | P2 ate | P3 ate | P4 ate`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -236,9 +304,27 @@ int main() {
     for (int i = 0; i < 5; i++) sem_destroy(&chopstick[i]);
     return 0;
 }
-Problem 5: Reusable Barrier SynchronizationProblem StatementRun $T$ worker threads.In each phase $k$ (for $N$ phases), every thread executes its first part: printing T<id>_Phase<k>.Barrier Rule: NO thread is allowed to print [Phase k complete] until ALL $T$ threads have completed their first print for that phase. Implement using semaphores without busy-waiting.Input format: <Number T Threads of> <Number N Phases of>Sample Input: 3 2Sample Output:PlaintextT1_Phase1 T2_Phase1 T3_Phase1 [Phase 1 complete]
+```
+
+### Problem 5: Reusable Barrier Synchronization
+
+**Problem Statement**
+Run $T$ worker threads.
+In each phase $k$ (for $N$ phases), every thread executes its first part: printing T<id>_Phase<k>.
+Barrier Rule: NO thread is allowed to print [Phase k complete] until ALL $T$ threads have completed their first print for that phase. Implement using semaphores without busy-waiting.
+
+**Input format:** `<Number T Threads of> <Number N Phases of>`
+**Sample Input:** `3 2`
+**Sample Output:**
+```
+T1_Phase1 T2_Phase1 T3_Phase1 [Phase 1 complete]
 T1_Phase2 T2_Phase2 T3_Phase2 [Phase 2 complete]
-SolutionC++#include <iostream>
+```
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -291,7 +377,24 @@ int main() {
     sem_destroy(&barrier);
     return 0;
 }
-Problem 6: Resource Pool Allocation (Multi-Unit Semaphore)Problem StatementA system has $R$ identical GPU resources.Run $T$ worker threads.Thread $i$ needs $K_i$ GPUs simultaneously to run its calculation, then releases them.Use a counting semaphore initialized to $R$ to represent available GPUs, protected by a mutex to ensure safe multi-token acquisition.Input format: <Available GPUs R> <Number T Threads of>Sample Input: 3 2 (Thread 1 needs 2 GPUs; Thread 2 needs 2 GPUs)Sample Output: Thread 1 acquired 2 GPUs | Thread 1 released GPUs | Thread 2 acquired 2 GPUs | Thread 2 released GPUsSolutionC++#include <iostream>
+```
+
+### Problem 6: Resource Pool Allocation (Multi-Unit Semaphore)
+
+**Problem Statement**
+A system has $R$ identical GPU resources.
+Run $T$ worker threads.
+Thread $i$ needs $K_i$ GPUs simultaneously to run its calculation, then releases them.
+Use a counting semaphore initialized to $R$ to represent available GPUs, protected by a mutex to ensure safe multi-token acquisition.
+
+**Input format:** `<Available GPUs R> <Number T Threads of>`
+**Sample Input:** `3 2` (Thread 1 needs 2 GPUs; Thread 2 needs 2 GPUs)
+**Sample Output:** `Thread 1 acquired 2 GPUs | Thread 1 released GPUs | Thread 2 acquired 2 GPUs | Thread 2 released GPUs`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -342,7 +445,24 @@ int main() {
     sem_destroy(&lock);
     return 0;
 }
-Problem 7: Binary Rendezvous PointProblem StatementRun two threads: Thread A and Thread B.Thread A must print A1.Thread B must print B1.Both threads must hit a rendezvous point: Neither thread can print A2 or B2 until BOTH A1 and B1 have been printed.Implement using two semaphores initialized to 0.Input format: NoneSample Output: A1 B1 A2 B2 (or B1 A1 B2 A2, or A1 B1 B2 A2)SolutionC++#include <iostream>
+```
+
+### Problem 7: Binary Rendezvous Point
+
+**Problem Statement**
+Run two threads: Thread A and Thread B.
+Thread A must print A1.
+Thread B must print B1.
+Both threads must hit a rendezvous point: Neither thread can print A2 or B2 until BOTH A1 and B1 have been printed.
+Implement using two semaphores initialized to 0.
+
+**Input format:** None
+**Sample Output:** `A1 B1 A2 B2` (or `B1 A1 B2 A2`, or `A1 B1 B2 A2`)
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -382,7 +502,23 @@ int main() {
     sem_destroy(&semB_done);
     return 0;
 }
-Problem 8: Asymmetric H2O Molecule BondingProblem StatementRun Hydrogen (H) threads and Oxygen (O) threads.To form a single Water molecule ($H_2O$), exactly 2 Hydrogen threads and 1 Oxygen thread must bond.Thread 3 (Oxygen) acts as the barrier leader: once two 'H's and one 'O' are present, print H2O and unblock the next group. Run for $N$ molecules.Input format: <Number H2O N molecules of>Sample Input: 2Sample Output: H2O H2OSolutionC++#include <iostream>
+```
+
+### Problem 8: Asymmetric H2O Molecule Bonding
+
+**Problem Statement**
+Run Hydrogen (H) threads and Oxygen (O) threads.
+To form a single Water molecule ($H_2O$), exactly 2 Hydrogen threads and 1 Oxygen thread must bond.
+Thread 3 (Oxygen) acts as the barrier leader: once two 'H's and one 'O' are present, print H2O and unblock the next group. Run for $N$ molecules.
+
+**Input format:** `<Number H2O N molecules of>`
+**Sample Input:** `2`
+**Sample Output:** `H2O H2O`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -437,7 +573,24 @@ int main() {
     sem_destroy(&semBond);
     return 0;
 }
-Problem 9: Reader-Writer with Writer Priority (No Writer Starvation)Problem StatementStandard Reader-Writer code starves writers if readers arrive continuously.Implement Writer-Preference Readers-Writers:If a writer arrives, subsequent readers MUST block until all waiting writers have finished writing.Use semaphores readTry (blocks incoming readers when a writer is queued), rw_mutex, and counter locks.Input format: <Readers R> <Writers W>Sample Input: 2 2Sample Output: Writer 1 wrote | Writer 2 wrote | Reader 1 read | Reader 2 readSolutionC++#include <iostream>
+```
+
+### Problem 9: Reader-Writer with Writer Priority (No Writer Starvation)
+
+**Problem Statement**
+Standard Reader-Writer code starves writers if readers arrive continuously.
+Implement Writer-Preference Readers-Writers:
+If a writer arrives, subsequent readers MUST block until all waiting writers have finished writing.
+Use semaphores readTry (blocks incoming readers when a writer is queued), rw_mutex, and counter locks.
+
+**Input format:** `<Readers R> <Writers W>`
+**Sample Input:** `2 2`
+**Sample Output:** `Writer 1 wrote | Writer 2 wrote | Reader 1 read | Reader 2 read`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -511,7 +664,26 @@ int main() {
     sem_destroy(&resource);
     return 0;
 }
-Problem 10: Sleeping Barber ProblemProblem StatementA barbershop has 1 Barber chair and $N$ waiting chairs.If there are no customers, the Barber sleeps (sem_wait(&customers)).When a customer arrives:If all $N$ chairs are full, the customer leaves (cout << "Customer left").Otherwise, the customer sits in a chair, wakes the barber (sem_post(&customers)), and waits for the haircut (sem_wait(&barber)).Run for $C$ total arriving customers.Input format: <Waiting N chairs> <Total C arriving customers>Sample Input: 1 3Sample Output: Customer 1 getting haircut | Customer 2 getting haircut | Customer 3 leftSolutionC++#include <iostream>
+```
+
+### Problem 10: Sleeping Barber Problem
+
+**Problem Statement**
+A barbershop has 1 Barber chair and $N$ waiting chairs.
+If there are no customers, the Barber sleeps (`sem_wait(&customers)`).
+When a customer arrives:
+If all $N$ chairs are full, the customer leaves (`cout << "Customer left"`).
+Otherwise, the customer sits in a chair, wakes the barber (`sem_post(&customers)`), and waits for the haircut (`sem_wait(&barber)`).
+Run for $C$ total arriving customers.
+
+**Input format:** `<Waiting N chairs> <Total C arriving customers>`
+**Sample Input:** `1 3`
+**Sample Output:** `Customer 1 getting haircut | Customer 2 getting haircut | Customer 3 left`
+
+**Solution**
+
+```cpp
+#include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -579,3 +751,5 @@ int main() {
     sem_destroy(&sem_barber);
     sem_destroy(&lock);
     return 0;
+}
+```
