@@ -1,0 +1,23 @@
+\contentsline {section}{\numberline {1}Assignment Overview}{2}{section.1}%
+\contentsline {section}{\numberline {2}Problem Description}{2}{section.2}%
+\contentsline {section}{\numberline {3}Input Format}{2}{section.3}%
+\contentsline {section}{\numberline {4}Implementation}{3}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Greedy Algorithm (Nearest Neighbor)}{3}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Simulated Annealing}{3}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Key Implementation Details}{3}{subsection.4.3}%
+\contentsline {section}{\numberline {5}Experimental Setup}{4}{section.5}%
+\contentsline {section}{\numberline {6}Experiment 1: Greedy vs. Simulated Annealing}{4}{section.6}%
+\contentsline {paragraph}{Discussion:}{5}{section*.7}%
+\contentsline {section}{\numberline {7}Experiment 2: Varying Initial Temperature ($T_0$)}{5}{section.7}%
+\contentsline {paragraph}{Discussion:}{6}{section*.10}%
+\contentsline {section}{\numberline {8}Experiment 3: Varying Cooling Rate ($\alpha $)}{6}{section.8}%
+\contentsline {paragraph}{Discussion:}{7}{section*.13}%
+\contentsline {section}{\numberline {9}Experiment 4: Random vs. Greedy Initialization}{7}{section.9}%
+\contentsline {paragraph}{Discussion:}{8}{section*.16}%
+\contentsline {section}{\numberline {10}Complexity Analysis}{8}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Greedy Technique}{8}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Simulated Annealing}{8}{subsection.10.2}%
+\contentsline {paragraph}{Potential Optimization:}{9}{section*.17}%
+\contentsline {section}{\numberline {11}Comparative Summary}{9}{section.11}%
+\contentsline {section}{\numberline {12}Conclusion}{9}{section.12}%
+\contentsline {section}{\numberline {13}Submission Contents}{10}{section.13}%
