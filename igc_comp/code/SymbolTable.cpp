@@ -3,19 +3,19 @@
 #include <iostream>
 
 using namespace std ;
-// ==========================================
-// 1. SymbolInfo Class
-// ==========================================
+
+
+
 class SymbolInfo {
 private:
     string name;
     string type;
     
     
-    string identityType; // "VAR", "ARRAY", "FUNCTION"
-    int stackOffset;          // e.g., 4 means [ebp - 4]
-    bool isGlobal;            // true if declared at global scope
-    int arraySize;            // array size if identityType == "ARRAY"
+    string identityType; 
+    int stackOffset;          
+    bool isGlobal;            
+    int arraySize;            
 
 public:
     SymbolInfo* next;
@@ -42,15 +42,15 @@ public:
     void setArraySize(int size) { arraySize = size; }
 };
 
-// ==========================================
-// 2. ScopeTable Class
-// ==========================================
+
+
+
 class ScopeTable {
 private:
     int numBuckets;
     int id;
     vector<SymbolInfo*> table;
-    int currentStackOffset; // Tracks cumulative stack memory used in this scope
+    int currentStackOffset; 
 
     unsigned long hashFunction(const string& name) const {
         unsigned long hash = 0;
@@ -64,7 +64,7 @@ public:
     ScopeTable* parentScope;
 
     ScopeTable(int numBuckets, int id, ScopeTable* parent = nullptr)
-        : numBuckets(numBuckets), id(id), parentScope(parent), currentStackOffset(0) {
+        : numBuckets(numBuckets), id(id), currentStackOffset(0), parentScope(parent) {
         table.resize(numBuckets, nullptr);
         if (parent != nullptr) {
             currentStackOffset = parent->getCurrentStackOffset();
@@ -124,9 +124,9 @@ public:
     }
 };
 
-// ==========================================
-// 3. SymbolTable Class
-// ==========================================
+
+
+
 class SymbolTable {
 private:
     ScopeTable* currentScope;
@@ -136,7 +136,7 @@ private:
 public:
     SymbolTable(int numBuckets = 11) : numBuckets(numBuckets), scopeCount(0) {
         currentScope = nullptr;
-        enterScope(); // Creates scope 1 (Global scope)
+        enterScope(); 
     }
 
     ~SymbolTable() {

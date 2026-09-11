@@ -18,27 +18,27 @@ int main(int argc, const char* argv[]) {
 
     string inputFileName = argv[1];
 
-    // Step 1: Read input file
+    
     ifstream inputStream(inputFileName);
     if (!inputStream.is_open()) {
         cerr << "Error: Cannot open input file " << inputFileName << endl;
         return 1;
     }
 
-    // Step 2: ANTLR4 lexing and parsing
+    
     ANTLRInputStream input(inputStream);
     C4Lexer lexer(&input);
     CommonTokenStream tokens(&lexer);
     C4Parser parser(&tokens);
 
-    // Step 3: Parse the input
+    
     C4Parser::StartContext* tree = parser.start();
 
-    // Step 4: Generate assembly code
+    
     string codeFileName = "code.asm";
     CodeGenarator codeGen(codeFileName);
 
-    // visitProgram handles: header, data segment, code segment, OUTDEC, and all functions
+    
     codeGen.visit(tree);
 
     codeGen.finalize();
@@ -46,7 +46,7 @@ int main(int argc, const char* argv[]) {
 
     cout << "Assembly code generated: " << codeFileName << endl;
 
-    // Step 5: Peephole optimization
+    
     string optimizedFileName = "optimized_code.asm";
     PeepholeOptimizer optimizer;
     optimizer.loadFile(codeFileName);

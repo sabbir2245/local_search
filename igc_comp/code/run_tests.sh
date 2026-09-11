@@ -6,12 +6,14 @@ FAIL=0
 RESULTS=""
 
 for test in $TESTS; do
-    ./icg_compiler input/${test}.c >/dev/null 2>&1
+    COMPILER_OUTPUT=$(./icg_compiler input/${test}.c 2>&1)
     if [ $? -ne 0 ]; then
         RESULTS+="FAIL: $test (compiler crashed)\n"
         FAIL=$((FAIL+1))
         continue
     fi
+
+    OPT_COUNT=$(echo "$COMPILER_OUTPUT" | grep -oP 'Peephole optimizations applied: \K[0-9]+')
 
     fasm code.asm /tmp/test_bin >/dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -30,10 +32,10 @@ for test in $TESTS; do
     ' "$EXPECTED_FILE")
 
     if [ "$ACTUAL" = "$EXPECTED" ]; then
-        RESULTS+="PASS: $test\n"
+        RESULTS+="PASS: $test (opts: ${OPT_COUNT:-0})\n"
         PASS=$((PASS+1))
     else
-        RESULTS+="FAIL: $test\n"
+        RESULTS+="FAIL: $test (opts: ${OPT_COUNT:-0})\n"
         RESULTS+="  Expected:\n$(echo "$EXPECTED" | sed 's/^/    /')\n"
         RESULTS+="  Actual:\n$(echo "$ACTUAL" | sed 's/^/    /')\n"
         FAIL=$((FAIL+1))

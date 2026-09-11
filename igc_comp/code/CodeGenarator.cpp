@@ -1,9 +1,9 @@
 #include "CodeGenarator.h"
 #include <cstdlib>
 
-// ==========================================
-// Constructor / Destructor
-// ==========================================
+
+
+
 
 CodeGenarator::CodeGenarator(const string& outputFileName)
     : labelCount(0), currentLine(1), paramCount(0) {
@@ -18,9 +18,9 @@ CodeGenarator::~CodeGenarator() {
     if (asmFile.is_open()) asmFile.close();
 }
 
-// ==========================================
-// Helper Methods
-// ==========================================
+
+
+
 
 string CodeGenarator::newLabel(const string& prefix) {
     return prefix + "_" + to_string(labelCount++);
@@ -73,9 +73,9 @@ string CodeGenarator::relOpToJump(const string& op, bool negate) {
     return "JMP";
 }
 
-// ==========================================
-// Assembly Structure Methods
-// ==========================================
+
+
+
 
 void CodeGenarator::generateHeader() {
     asmFile << "format ELF executable" << endl;
@@ -170,7 +170,11 @@ void CodeGenarator::generateFunctionEpilogue(const string& funcName, int localSi
         emit("ADD  ESP, " + to_string(abs(localSize)));
     }
     emit("POP  EBP");
-    if (paramSize > 0) {
+    if (funcName == "main") {
+        emit("MOV  EBX, EAX");
+        emit("MOV  EAX, 1");
+        emit("INT  0x80");
+    } else if (paramSize > 0) {
         emit("RET " + to_string(paramSize));
     } else {
         emit("RET");
@@ -181,17 +185,17 @@ void CodeGenarator::finalize() {
     asmFile.close();
 }
 
-// ==========================================
-// Visitor Implementations
-// ==========================================
+
+
+
 
 antlrcpp::Any CodeGenarator::visitStart(C4Parser::StartContext* ctx) {
     return visit(ctx->program());
 }
 
 antlrcpp::Any CodeGenarator::visitProgram(C4Parser::ProgramContext* ctx) {
-    // program is left-recursive: program unit | unit
-    // Walk the chain recursively to visit all units left-to-right
+    
+    
     auto collectUnits = [&](auto&& self, C4Parser::ProgramContext* p) -> void {
         if (p->program()) {
             self(self, p->program());
@@ -236,19 +240,6 @@ antlrcpp::Any CodeGenarator::visitUnit(C4Parser::UnitContext* ctx) {
 antlrcpp::Any CodeGenarator::visitFunc_declaration(C4Parser::Func_declarationContext* ctx) {
     string funcName = ctx->ID()->getText();
     string returnType = ctx->type_specifier()->getText();
-    int numParams = 0;
-    if (ctx->parameter_list()) {
-        // Walk the parameter_list chain to count params
-        auto countParams = [&](auto&& self, C4Parser::Parameter_listContext* pl) -> int {
-            int c = 0;
-            if (pl->parameter_list()) {
-                c += self(self, pl->parameter_list());
-            }
-            if (pl->ID()) c++;
-            return c;
-        };
-        numParams = countParams(countParams, ctx->parameter_list());
-    }
     symbolTable.insert(funcName, returnType);
     return nullptr;
 }
@@ -258,7 +249,7 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
     string returnType = ctx->type_specifier()->getText();
     currentFunctionName = funcName;
 
-    // Count parameters by walking the chain
+    
     paramCount = 0;
     if (ctx->parameter_list()) {
         auto countParams = [&](auto&& self, C4Parser::Parameter_listContext* pl) -> int {
@@ -275,7 +266,7 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
     symbolTable.insert(funcName, returnType);
     symbolTable.enterScope();
 
-    // Add parameters to scope
+    
     int paramOffset = 8;
     if (ctx->parameter_list()) {
         vector<pair<string, string>> params;
@@ -301,11 +292,11 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
         }
     }
 
-    // The number of bytes needed for locals is only known after the body has
-    // been generated (declarations are discovered as we walk statements), but
-    // the prologue's "SUB ESP, localSize" must appear before the body. So we
-    // generate the body into a temporary buffer first, then emit the real
-    // prologue (now that localSize is known) followed by the buffered body.
+    
+    
+    
+    
+    
     ostringstream bodyBuffer;
     ostream* savedOut = out;
     out = &bodyBuffer;
@@ -329,7 +320,7 @@ antlrcpp::Any CodeGenarator::visitFunc_definition(C4Parser::Func_definitionConte
     return nullptr;
 }
 
-antlrcpp::Any CodeGenarator::visitParameter_list(C4Parser::Parameter_listContext* ctx) {
+antlrcpp::Any CodeGenarator::visitParameter_list(C4Parser::Parameter_listContext*) {
     return nullptr;
 }
 
@@ -390,17 +381,17 @@ antlrcpp::Any CodeGenarator::visitVar_declaration(C4Parser::Var_declarationConte
     return nullptr;
 }
 
-antlrcpp::Any CodeGenarator::visitType_specifier(C4Parser::Type_specifierContext* ctx) {
+antlrcpp::Any CodeGenarator::visitType_specifier(C4Parser::Type_specifierContext*) {
     return nullptr;
 }
 
-antlrcpp::Any CodeGenarator::visitDeclaration_list(C4Parser::Declaration_listContext* ctx) {
+antlrcpp::Any CodeGenarator::visitDeclaration_list(C4Parser::Declaration_listContext*) {
     return nullptr;
 }
 
 antlrcpp::Any CodeGenarator::visitStatements(C4Parser::StatementsContext* ctx) {
-    // statements is left-recursive: statements statement | statement
-    // Walk chain to visit all statements left-to-right
+    
+    
     if (ctx->statements()) {
         visit(ctx->statements());
     }
@@ -412,11 +403,11 @@ antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
     if (ctx->var_declaration()) {
         visit(ctx->var_declaration());
     } else if (ctx->FOR()) {
-        // FOR LPAREN expression_statement expression_statement expression RPAREN statement
-        // NOTE: checked before the generic expression_statement branch below,
-        // because a FOR node also contains expression_statement children
-        // (the init and condition) and would otherwise be misclassified as
-        // a plain expression statement, silently dropping the loop.
+        
+        
+        
+        
+        
         string startLabel = newLabel("for_start");
         string endLabel = newLabel("for_end");
         string bodyLabel = newLabel("for_body");
@@ -424,24 +415,24 @@ antlrcpp::Any CodeGenarator::visitStatement(C4Parser::StatementContext* ctx) {
         symbolTable.enterScope();
 
         auto exprStmts = ctx->expression_statement();
-        // Initializer
+        
         if (exprStmts.size() > 0) {
             visit(exprStmts[0]);
         }
 
         (*out) << startLabel << ":" << endl;
 
-        // Condition
+        
         if (exprStmts.size() > 1) {
             visit(exprStmts[1]);
             emit("TEST EAX, EAX");
             emit("JE   " + endLabel);
         }
 
-        // Body
+        
         visit(ctx->statement(0));
 
-        // Increment
+        
         if (ctx->expression()) {
             visit(ctx->expression());
         }
@@ -635,16 +626,16 @@ antlrcpp::Any CodeGenarator::visitRel_expression(C4Parser::Rel_expressionContext
 
 antlrcpp::Any CodeGenarator::visitSimple_expression(C4Parser::Simple_expressionContext* ctx) {
     if (ctx->simple_expression()) {
-        // Left-recursive: simple_expression ADDOP term
-        visit(ctx->simple_expression()); // left in EAX
+        
+        visit(ctx->simple_expression()); 
         emit("PUSH EAX");
-        visit(ctx->term()); // right in EAX
+        visit(ctx->term()); 
         emit("POP  EBX");
         string op = ctx->ADDOP()->getText();
         if (op == "+") {
             emit("ADD  EAX, EBX");
         } else {
-            // EAX = right, EBX = left; we want left - right
+            
             emit("XCHG EAX, EBX");
             emit("SUB  EAX, EBX");
         }
@@ -656,10 +647,10 @@ antlrcpp::Any CodeGenarator::visitSimple_expression(C4Parser::Simple_expressionC
 
 antlrcpp::Any CodeGenarator::visitTerm(C4Parser::TermContext* ctx) {
     if (ctx->term()) {
-        // Left-recursive: term MULOP unary_expression
-        visit(ctx->term()); // left in EAX
+        
+        visit(ctx->term()); 
         emit("PUSH EAX");
-        visit(ctx->unary_expression()); // right in EAX
+        visit(ctx->unary_expression()); 
         emit("POP  EBX");
         string op = ctx->MULOP()->getText();
         if (op == "*") {
@@ -755,16 +746,7 @@ antlrcpp::Any CodeGenarator::visitFactor(C4Parser::FactorContext* ctx) {
     } else if (ctx->ID() && ctx->argument_list()) {
         string funcName = ctx->ID()->getText();
 
-        int numArgs = 0;
         if (ctx->argument_list()->arguments()) {
-            auto countArgs = [&](auto&& self, C4Parser::ArgumentsContext* a) -> int {
-                int c = 1;
-                if (a->arguments()) {
-                    c += self(self, a->arguments());
-                }
-                return c;
-            };
-            numArgs = countArgs(countArgs, ctx->argument_list()->arguments());
 
             vector<C4Parser::Logic_expressionContext*> argExprs;
             auto collectArgs = [&](auto&& self, C4Parser::ArgumentsContext* a) -> void {
@@ -782,9 +764,9 @@ antlrcpp::Any CodeGenarator::visitFactor(C4Parser::FactorContext* ctx) {
         }
 
         emit("CALL " + funcName);
-        // NOTE: no ADD ESP here — the callee already cleans up its
-        // parameters via "RET <paramSize>" in generateFunctionEpilogue().
-        // Doing both was double-popping the stack.
+        
+        
+        
     } else if (ctx->LPAREN()) {
         visit(ctx->expression());
     } else if (ctx->CONST_INT()) {
@@ -795,10 +777,10 @@ antlrcpp::Any CodeGenarator::visitFactor(C4Parser::FactorContext* ctx) {
     return nullptr;
 }
 
-antlrcpp::Any CodeGenarator::visitArgument_list(C4Parser::Argument_listContext* ctx) {
+antlrcpp::Any CodeGenarator::visitArgument_list(C4Parser::Argument_listContext*) {
     return nullptr;
 }
 
-antlrcpp::Any CodeGenarator::visitArguments(C4Parser::ArgumentsContext* ctx) {
+antlrcpp::Any CodeGenarator::visitArguments(C4Parser::ArgumentsContext*) {
     return nullptr;
 }

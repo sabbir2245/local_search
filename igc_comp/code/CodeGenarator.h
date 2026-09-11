@@ -15,7 +15,7 @@ class CodeGenarator : public C4BaseVisitor {
 private:
     SymbolTable symbolTable;
     ofstream asmFile;
-    ostream* out;   // current emission target: &asmFile, or a buffer while a function body is generated
+    ostream* out;   
     int labelCount;
     int currentLine;
     string currentFunctionName;

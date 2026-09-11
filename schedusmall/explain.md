@@ -118,10 +118,10 @@ In `fork()`, after copying the process name, we add:
 
 ```c
 np->tickets_original = p->tickets_original;
-np->tickets_current = p->tickets_original;
+np->tickets_current = p->tickets_current;
 ```
 
-**Why**: The spec requires child processes to inherit the parent's ticket count. If a parent has 30 tickets when it forks, the child should also start with 30.
+**Why**: The spec says "A child process must inherit its parent's current ticket count." The child gets the parent's remaining `tickets_current` (not `tickets_original`), so a parent that has already burned some tickets forks a child with the same depleted count — no free ticket regeneration.
 
 #### `user/user.h` — Added Prototypes
 
@@ -164,44 +164,52 @@ static int rand(int max) {
 
 **Global toggle**: `int print_logs = 1;` controls whether DEMO/PROMO/BOOST/LOTTERY messages are printed.
 
-**`scheduler()` — Complete Rewrite**: The old scheduler was a simple round-robin loop. The new one has 3 steps:
+**`scheduler()` — Complete Rewrite**: The old scheduler was a simple round-robin loop. The new one is protected by `mlfq_lock` for multi-CPU safety and has 3 steps:
 
-1. **Aging sweep**: Loop through all RUNNABLE processes in Queue 1. If `waiting_time > WAIT_THRESH`, promote to Queue 0, reset counters, print BOOST.
+1. **Aging sweep** (under `mlfq_lock`): Loop through all RUNNABLE processes in Queue 1. If `waiting_time > WAIT_THRESH`, promote to Queue 0, reset counters, print BOOST.
 
-2. **Queue 0 (Lottery)**: Sum `tickets_current` of all RUNNABLE Queue 0 processes. If all are 0, reset them back to `tickets_original`. Draw a random number `r` in `[0, total_tickets)`. Walk processes accumulating tickets until the running sum exceeds `r`. That process wins. Decrement its `tickets_current` by 1, print LOTTERY, context-switch to it.
+2. **Queue 0 (Lottery)** (under `mlfq_lock`): Sum `tickets_current` of all RUNNABLE Queue 0 processes. If all are 0, reset them back to `tickets_original`. Draw a random number `r` in `[0, total_tickets)`. Walk processes accumulating tickets until the running sum exceeds `r`. That process wins. Decrement its `tickets_current` by 1, set `state = RUNNING`, print LOTTERY. **Release `mlfq_lock` before `swtch()`** so other CPUs can schedule in parallel.
 
-3. **Queue 1 (Round-Robin)**: If Queue 0 is empty, pick the first RUNNABLE process in Queue 1. Context-switch to it.
+3. **Queue 1 (Round-Robin)** (under `mlfq_lock`): If Queue 0 is empty, pick the first RUNNABLE process in Queue 1. Set `state = RUNNING`. Release `mlfq_lock` before `swtch()`.
 
-After each context switch, the scheduler restarts from the top (Queue 0 search).
+4. **Resume loop** (after `mlfq_lock` release): After `swtch()` returns, if the process is still RUNNABLE, still in Queue 0, and hasn't exhausted `ticks_consumed`, resume it directly instead of drawing a new lottery winner. This ensures a process runs its full 2-tick time slice without losing the CPU to a re-draw.
 
-**Why**: This implements the MLFQ behavior: top-down priority search, lottery in Q0, round-robin in Q1, aging to prevent starvation.
+**Why**: The `mlfq_lock` serializes the selection decision so two CPUs can't both pick the same process or both reset tickets. Releasing it before `swtch()` allows parallel execution. The resume loop implements the spec's requirement that "queue 0's time slice allows a process to run several ticks in a row."
 
-**`yield()` — Complete Rewrite**: When a process gives up the CPU:
+**`yield()` — Timer-driven preemption only**: In xv6, `yield()` is called on *every timer tick* from `usertrap()`. It is **not** called on voluntary yields (those go through `sleep()`). So `yield()` only does:
 
 - Increments `ticks_consumed` and `queue_ticks[inQ]`.
 - **Queue 0 + time exhausted** (`ticks_consumed >= TIME_LIMIT_0`): Demote to Queue 1, increment `running_time`, print DEMO, reset `ticks_consumed`.
-- **Queue 0 + voluntary yield** (before time exhausted): Stay in Queue 0, print PROMO, reset `ticks_consumed`.
-- **Queue 1 + time exhausted**: Stay in Queue 1, increment `running_time`, reset `ticks_consumed`.
-- **Queue 1 + voluntary yield**: Promote to Queue 0, print PROMO, reset `ticks_consumed`.
+- **Queue 1 + time exhausted** (`ticks_consumed >= TIME_LIMIT_1`): Stay in Queue 1, increment `running_time`, reset `ticks_consumed`.
+- **Otherwise**: Do nothing — just mark RUNNABLE and return. The scheduler's resume loop will re-run this process.
 
-**Why**: This handles the core MLFQ queue transition logic. Demotion punishes CPU-bound processes. Promotion rewards I/O-bound processes.
+**Critical insight**: `yield()` never promotes. Promotion happens in `sleep()` (see below).
+
+**`sleep()` — Voluntary yield promotion**: When a process voluntarily blocks (I/O, pipe, `sleep()` syscall), it calls `sleep()` which sets `state = SLEEPING` and calls `sched()` directly — never going through `yield()`. Before sleeping:
+
+- If the process is in Queue 1 and hasn't used its full time slice (`ticks_consumed < TIME_LIMIT_1`), promote it to Queue 0 and print PROMO.
+- Reset `ticks_consumed` to 0 since the process is giving up the CPU.
+
+**Why**: This correctly separates timer-driven demotion (in `yield()`) from voluntary promotion (in `sleep()`). A process that sleeps before exhausting its time slice is I/O-bound and deserves higher priority.
 
 #### `kernel/trap.c` — Timer Interrupt
 
-In `clockintr()`, added:
+In `clockintr()`, added (guarded by `cpuid() == 0`):
 
 ```c
-struct proc *p;
-for(p = proc; p < &proc[NPROC]; p++) {
-  acquire(&p->lock);
-  if(p->state == RUNNABLE) {
-    p->waiting_time++;
+if(cpuid() == 0) {
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      p->waiting_time++;
+    }
+    release(&p->lock);
   }
-  release(&p->lock);
 }
 ```
 
-**Why**: Aging needs to know how long each process has been waiting. This increments `waiting_time` for every RUNNABLE process on every tick. When `waiting_time` exceeds `WAIT_THRESH`, the scheduler promotes the process.
+**Why**: Aging needs to know how long each process has been waiting. This increments `waiting_time` for every RUNNABLE process on every tick. The `cpuid() == 0` guard ensures only one CPU does this — with 3 CPUs, without the guard, `waiting_time` would grow 3x too fast and processes would be promoted after ~2 real ticks instead of 6.
 
 #### `user/testprocinfo.c` — Test Program
 
@@ -212,17 +220,45 @@ Calls `getpinfo(&st)` and prints a table of all active processes with: PID, In U
 #### `user/dummyproc.c` — Test Program
 
 Takes `<tickets> <iterations>` arguments. Calls `settickets()`. Forks a child:
-- **Parent**: CPU-bound tight loop (triggers DEMO — exhausts time slice).
+- **Parent**: CPU-bound LCG loop (`sink = sink * 1103515245u + i; sink ^= sink >> 13`) — non-optimizable work that actually stalls the CPU, triggering DEMO after 2 ticks.
 - **Child**: Loop with periodic `sleep(1)` (triggers PROMO — voluntary yield).
 
-**Why**: The parent demonstrates demotion. The child demonstrates promotion. Together they exercise the full MLFQ transition logic.
+**Why**: The LCG body can't be optimized away by the compiler (unlike `volatile int x = i * i` which finishes in nanoseconds). With ≥ 10^9 iterations, the parent runs long enough to burn 2 timer ticks (~200ms on QEMU), which is the minimum needed for DEMO to fire.
 
 #### `Makefile`
 
-- Changed `CPUS := 3` to `CPUS := 1` (single core per spec).
-- Added `$U/_dummyproc` and `$U/_testprocinfo` to UPROGS.
+- Set `CPUS := 3` for multi-CPU bonus.
+- Added `-march=rv64gc` to CFLAGS and `-cpu max` to QEMUOPTS for QEMU 10.2.1 compatibility.
+- Added `$U/_dummyproc`, `$U/_testprocinfo`, and `$U/_usertests` to UPROGS.
 
-**Why**: The spec requires single-core. The new programs need to be compiled and linked into the filesystem image.
+**Why**: The multi-CPU bonus requires `CPUS > 1`. The architecture flag prevents QEMU silent hangs. The test programs need to be compiled into the filesystem image.
+
+---
+
+## Part 4: Multi-CPU Bonus
+
+### The Problem
+
+With `CPUS > 1`, three things break:
+1. **Double-pick**: Two CPUs can both read stale ticket totals and pick the same process.
+2. **Double-reset**: Two CPUs can both see `total_tickets == 0` and both reset tickets.
+3. **Fast aging**: Every CPU's timer IRQ increments `waiting_time`, so aging fires NCPUS× too fast.
+
+### The Fix: One Global Lock
+
+Added `struct spinlock mlfq_lock` in `kernel/proc.c` and initialized it in `procinit()`. The entire selection block (aging sweep + lottery + RR fallback) runs under `mlfq_lock`. The lock is released **before** `swtch()` so other CPUs can schedule in parallel.
+
+```
+acquire(&mlfq_lock);
+  // aging sweep, lottery, RR fallback — all under lock
+  chosen_p->state = RUNNING;  // prevents double-pick
+release(&mlfq_lock);
+swtch(...);  // parallel execution
+```
+
+For `waiting_time++` in `clockintr()`, added `if(cpuid() == 0)` so only one CPU increments the aging clock.
+
+**Why this works**: Selection is atomic (no double-pick or double-reset). Execution is parallel (lock released before context switch). The `cpuid()==0` guard ensures aging runs at the correct rate.
 
 ---
 
@@ -248,22 +284,24 @@ $ testprocinfo
 ### Test 2: Lottery Scheduling
 
 ```
-$ dummyproc 30 1000000000 &
-$ dummyproc 10 1000000000 &
+$ dummyproc 43 1000000000 &
+$ dummyproc 5 1500000000 &
 $ testprocinfo
 ```
 
-**Expected**: The 30-ticket process has ~3x more `Times sched` and `q0 ticks` than the 10-ticket one.
+**Expected**: The 43-ticket process gets scheduled ~8x more than the 5-ticket one. `Curr tix` decreases as lotteries are won.
 
-### Test 3: Demotion and Promotion (with logging enabled)
+### Test 3: Demotion and Promotion (DEMO + PROMO)
 
 ```
-$ dummyproc 20 500000000 &
+$ dummyproc 20 1000000000 &
 ```
 
 **Expected logs** (with `print_logs = 1`):
 - Parent: `DEMO: Process <pid> (dummyproc) ran for 2 time ticks, demoted to queue 1`
-- Child: `PROMO: Process <pid> (dummyproc) ran for 1 time ticks, promoted to queue 0`
+- Child: `PROMO: Process <pid> (dummyproc) ran for N time ticks, promoted to queue 0`
+
+The parent's LCG loop runs long enough to burn 2 ticks, triggering DEMO. The child sleeps periodically, triggering PROMO.
 
 ### Test 4: Aging (BOOST)
 
@@ -271,10 +309,21 @@ $ dummyproc 20 500000000 &
 $ dummyproc 10 2000000000 &
 ```
 
-**Expected log**: After a process waits >6 ticks in Queue 1:
+**Expected log**: After a process waits >6 ticks in Queue 1 while others hog Queue 0:
 `BOOST: Process <pid> (dummyproc) waited for 6 ticks, promoted to queue 0`
 
-### Test 5: Ticket Reset
+### Test 5: Multi-CPU (Bonus)
+
+```
+$ dummyproc 43 1000000000 &
+$ dummyproc 5 1500000000 &
+$ dummyproc 20 1500000000 &
+$ testprocinfo
+```
+
+**Expected**: Multiple LOTTERY lines interleaved (one per CPU), DEMO firing for different PIDs on different CPUs, no duplicate state = RUNNING for the same PID.
+
+### Test 6: Ticket Reset
 
 Run `testprocinfo` and observe that `Curr tix` decreases over time as processes win lotteries. When all reach 0, they reset back to `Orig tix`.
 
@@ -287,15 +336,16 @@ Run `testprocinfo` and observe that `Curr tix` decreases over time as processes 
 | `kernel/param.h` | +6 | Scheduler constants |
 | `kernel/pstat.h` | +18 (new) | Process stats struct |
 | `kernel/proc.h` | +12 | MLFQ fields in struct proc |
-| `kernel/proc.c` | +162 | Scheduler, yield, PRNG, alloc, fork |
+| `kernel/proc.c` | +190 | Scheduler (mlfq_lock), yield, sleep PROMO, PRNG, alloc, fork |
 | `kernel/syscall.h` | +2 | Syscall numbers |
 | `kernel/syscall.c` | +55 | settickets, getpinfo implementations |
-| `kernel/trap.c` | +10 | Waiting time tracking |
+| `kernel/trap.c` | +12 | Waiting time tracking (cpuid==0 guard) |
 | `kernel/defs.h` | +1 | Forward declaration |
 | `user/user.h` | +2 | Syscall prototypes |
 | `user/usys.pl` | +2 | Syscall stubs |
-| `user/dummyproc.c` | +46 (new) | Test program |
+| `user/dummyproc.c` | +46 (new) | Test program (LCG parent loop) |
 | `user/testprocinfo.c` | +37 (new) | Test program |
-| `Makefile` | +3/-2 | CPUS=1, UPROGS |
+| `user/usertests.c` | +1 | Fix rwsbrk signature |
+| `Makefile` | +5/-3 | CPUS=3, -march=rv64gc, -cpu max, UPROGS |
 
-**Total**: 13 files changed, ~350 lines of new code.
+**Total**: 14 files changed, ~400 lines of new code.

@@ -4,9 +4,11 @@ make all
 # Clean (removes all generated files including ANTLR output)
 make clean
 
-# Run with a specific input
-./icg_compiler input/test1_i.c
+after make all 
 
+
+# Run with a specific input
+./icg_compiler input/test1_i.c && fasm code.asm code && ./code
 # Or use the make shortcut (runs on test1_i.c)
 make run
 
