@@ -1,0 +1,53 @@
+Mancala Heuristic Round-Robin Results
+
+=== Search Depth: 4 ===
+heuristic-1 vs heuristic-2 -> wins: 74 / 22, draws: 4, heuristic-1 win perc: 74%, heuristic-2 win perc: 22%
+heuristic-1 vs heuristic-3 -> wins: 49 / 46, draws: 5, heuristic-1 win perc: 49%, heuristic-3 win perc: 46%
+heuristic-1 vs heuristic-4 -> wins: 53 / 40, draws: 7, heuristic-1 win perc: 53%, heuristic-4 win perc: 40%
+heuristic-1 vs heuristic-5 -> wins: 44 / 42, draws: 14, heuristic-1 win perc: 44%, heuristic-5 win perc: 42%
+heuristic-1 vs heuristic-6 -> wins: 54 / 45, draws: 1, heuristic-1 win perc: 54%, heuristic-6 win perc: 45%
+heuristic-2 vs heuristic-3 -> wins: 42 / 58, draws: 0, heuristic-2 win perc: 42%, heuristic-3 win perc: 58%
+heuristic-2 vs heuristic-4 -> wins: 52 / 46, draws: 2, heuristic-2 win perc: 52%, heuristic-4 win perc: 46%
+heuristic-2 vs heuristic-5 -> wins: 21 / 79, draws: 0, heuristic-2 win perc: 21%, heuristic-5 win perc: 79%
+heuristic-2 vs heuristic-6 -> wins: 68 / 31, draws: 1, heuristic-2 win perc: 68%, heuristic-6 win perc: 31%
+heuristic-3 vs heuristic-4 -> wins: 33 / 15, draws: 52, heuristic-3 win perc: 33%, heuristic-4 win perc: 15%
+heuristic-3 vs heuristic-5 -> wins: 0 / 100, draws: 0, heuristic-3 win perc: 0%, heuristic-5 win perc: 100%
+heuristic-3 vs heuristic-6 -> wins: 95 / 5, draws: 0, heuristic-3 win perc: 95%, heuristic-6 win perc: 5%
+heuristic-4 vs heuristic-5 -> wins: 0 / 95, draws: 5, heuristic-4 win perc: 0%, heuristic-5 win perc: 95%
+heuristic-4 vs heuristic-6 -> wins: 75 / 24, draws: 1, heuristic-4 win perc: 75%, heuristic-6 win perc: 24%
+heuristic-5 vs heuristic-6 -> wins: 100 / 0, draws: 0, heuristic-5 win perc: 100%, heuristic-6 win perc: 0%
+
+=== Search Depth: 6 ===
+heuristic-1 vs heuristic-2 -> wins: 91 / 5, draws: 4, heuristic-1 win perc: 91%, heuristic-2 win perc: 5%
+heuristic-1 vs heuristic-3 -> wins: 56 / 33, draws: 11, heuristic-1 win perc: 56%, heuristic-3 win perc: 33%
+heuristic-1 vs heuristic-4 -> wins: 49 / 49, draws: 2, heuristic-1 win perc: 49%, heuristic-4 win perc: 49%
+heuristic-1 vs heuristic-5 -> wins: 53 / 42, draws: 5, heuristic-1 win perc: 53%, heuristic-5 win perc: 42%
+heuristic-1 vs heuristic-6 -> wins: 76 / 22, draws: 2, heuristic-1 win perc: 76%, heuristic-6 win perc: 22%
+heuristic-2 vs heuristic-3 -> wins: 0 / 100, draws: 0, heuristic-2 win perc: 0%, heuristic-3 win perc: 100%
+heuristic-2 vs heuristic-4 -> wins: 18 / 69, draws: 13, heuristic-2 win perc: 18%, heuristic-4 win perc: 69%
+heuristic-2 vs heuristic-5 -> wins: 0 / 100, draws: 0, heuristic-2 win perc: 0%, heuristic-5 win perc: 100%
+heuristic-2 vs heuristic-6 -> wins: 99 / 1, draws: 0, heuristic-2 win perc: 99%, heuristic-6 win perc: 1%
+heuristic-3 vs heuristic-4 -> wins: 76 / 24, draws: 0, heuristic-3 win perc: 76%, heuristic-4 win perc: 24%
+heuristic-3 vs heuristic-5 -> wins: 36 / 62, draws: 2, heuristic-3 win perc: 36%, heuristic-5 win perc: 62%
+heuristic-3 vs heuristic-6 -> wins: 100 / 0, draws: 0, heuristic-3 win perc: 100%, heuristic-6 win perc: 0%
+heuristic-4 vs heuristic-5 -> wins: 37 / 62, draws: 1, heuristic-4 win perc: 37%, heuristic-5 win perc: 62%
+heuristic-4 vs heuristic-6 -> wins: 50 / 50, draws: 0, heuristic-4 win perc: 50%, heuristic-6 win perc: 50%
+heuristic-5 vs heuristic-6 -> wins: 50 / 48, draws: 2, heuristic-5 win perc: 50%, heuristic-6 win perc: 48%
+
+=== Search Depth: 8 ===
+heuristic-1 vs heuristic-2 -> wins: 59 / 36, draws: 5, heuristic-1 win perc: 59%, heuristic-2 win perc: 36%
+heuristic-1 vs heuristic-3 -> wins: 79 / 17, draws: 4, heuristic-1 win perc: 79%, heuristic-3 win perc: 17%
+heuristic-1 vs heuristic-4 -> wins: 79 / 19, draws: 2, heuristic-1 win perc: 79%, heuristic-4 win perc: 19%
+heuristic-1 vs heuristic-5 -> wins: 51 / 49, draws: 0, heuristic-1 win perc: 51%, heuristic-5 win perc: 49%
+heuristic-1 vs heuristic-6 -> wins: 74 / 26, draws: 0, heuristic-1 win perc: 74%, heuristic-6 win perc: 26%
+heuristic-2 vs heuristic-3 -> wins: 27 / 69, draws: 4, heuristic-2 win perc: 27%, heuristic-3 win perc: 69%
+heuristic-2 vs heuristic-4 -> wins: 53 / 46, draws: 1, heuristic-2 win perc: 53%, heuristic-4 win perc: 46%
+heuristic-2 vs heuristic-5 -> wins: 50 / 50, draws: 0, heuristic-2 win perc: 50%, heuristic-5 win perc: 50%
+heuristic-2 vs heuristic-6 -> wins: 76 / 0, draws: 24, heuristic-2 win perc: 76%, heuristic-6 win perc: 0%
+heuristic-3 vs heuristic-4 -> wins: 42 / 58, draws: 0, heuristic-3 win perc: 42%, heuristic-4 win perc: 58%
+heuristic-3 vs heuristic-5 -> wins: 22 / 70, draws: 8, heuristic-3 win perc: 22%, heuristic-5 win perc: 70%
+heuristic-3 vs heuristic-6 -> wins: 78 / 2, draws: 20, heuristic-3 win perc: 78%, heuristic-6 win perc: 2%
+heuristic-4 vs heuristic-5 -> wins: 18 / 69, draws: 13, heuristic-4 win perc: 18%, heuristic-5 win perc: 69%
+heuristic-4 vs heuristic-6 -> wins: 81 / 2, draws: 17, heuristic-4 win perc: 81%, heuristic-6 win perc: 2%
+heuristic-5 vs heuristic-6 -> wins: 95 / 0, draws: 5, heuristic-5 win perc: 95%, heuristic-6 win perc: 0%
+

@@ -1,0 +1,252 @@
+[
+  {
+    "test_case": 0,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 205614,
+        "cost": 46
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 13113,
+        "cost": 46
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 3679,
+        "cost": 60
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 285,
+        "cost": 62
+      }
+    ]
+  },
+  {
+    "test_case": 1,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 5363,
+        "cost": 40
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 2243,
+        "cost": 42
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 828,
+        "cost": 54
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 288,
+        "cost": 72
+      }
+    ]
+  },
+  {
+    "test_case": 2,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 32541,
+        "cost": 44
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 4771,
+        "cost": 44
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 664,
+        "cost": 56
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 154,
+        "cost": 70
+      }
+    ]
+  },
+  {
+    "test_case": 3,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 50985,
+        "cost": 42
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 8587,
+        "cost": 42
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 1196,
+        "cost": 50
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 278,
+        "cost": 72
+      }
+    ]
+  },
+  {
+    "test_case": 4,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 707,
+        "cost": 28
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 358,
+        "cost": 28
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 1727,
+        "cost": 28
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 1801,
+        "cost": 56
+      }
+    ]
+  },
+  {
+    "test_case": 5,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 15099,
+        "cost": 34
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 7445,
+        "cost": 34
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 3841,
+        "cost": 40
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 235,
+        "cost": 44
+      }
+    ]
+  },
+  {
+    "test_case": 6,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 174411,
+        "cost": 44
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 54713,
+        "cost": 46
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 2060,
+        "cost": 52
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 276,
+        "cost": 74
+      }
+    ]
+  },
+  {
+    "test_case": 7,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 127135,
+        "cost": 42
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 31576,
+        "cost": 42
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 1189,
+        "cost": 48
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 199,
+        "cost": 60
+      }
+    ]
+  },
+  {
+    "test_case": 8,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 463,
+        "cost": 28
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 533,
+        "cost": 30
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 220,
+        "cost": 36
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 463,
+        "cost": 52
+      }
+    ]
+  },
+  {
+    "test_case": 9,
+    "results": [
+      {
+        "W": 1.0,
+        "nodes_explored": 1128,
+        "cost": 30
+      },
+      {
+        "W": 1.2,
+        "nodes_explored": 651,
+        "cost": 32
+      },
+      {
+        "W": 2.0,
+        "nodes_explored": 1063,
+        "cost": 42
+      },
+      {
+        "W": 5.0,
+        "nodes_explored": 250,
+        "cost": 44
+      }
+    ]
+  }
+]
