@@ -1,0 +1,627 @@
+diff --git a/Makefile b/Makefile
+index 62fd0f8..17dce42 100644
+--- a/Makefile
++++ b/Makefile
+@@ -58,7 +58,7 @@ OBJDUMP = $(TOOLPREFIX)objdump
+ 
+ CFLAGS = -Wall -Werror -O -fno-omit-frame-pointer -ggdb -gdwarf-2
+ CFLAGS += -MD
+-CFLAGS += -mcmodel=medany
++CFLAGS += -march=rv64gc -mcmodel=medany
+ # CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
+ CFLAGS += -fno-common -nostdlib -mno-relax
+ CFLAGS += -fno-builtin-strncpy -fno-builtin-strncmp -fno-builtin-strlen -fno-builtin-memset
+@@ -135,10 +135,12 @@ UPROGS=\
+ 	$U/_rm\
+ 	$U/_sh\
+ 	$U/_stressfs\
+-	$U/_usertests\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_dummyproc\
++	$U/_testprocinfo\
++	$U/_usertests\
+ 
+ fs.img: mkfs/mkfs README $(UPROGS)
+ 	mkfs/mkfs fs.img README $(UPROGS)
+@@ -163,7 +165,7 @@ ifndef CPUS
+ CPUS := 3
+ endif
+ 
+-QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nographic
++QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nographic -cpu max
+ QEMUOPTS += -global virtio-mmio.force-legacy=false
+ QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0
+ QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+diff --git a/kernel/defs.h b/kernel/defs.h
+index d1b6bb9..134e98c 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -8,6 +8,7 @@ struct spinlock;
+ struct sleeplock;
+ struct stat;
+ struct superblock;
++struct pstat;
+ 
+ // bio.c
+ void            binit(void);
+diff --git a/kernel/param.h b/kernel/param.h
+index 6624bff..912019d 100644
+--- a/kernel/param.h
++++ b/kernel/param.h
+@@ -11,3 +11,9 @@
+ #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
+ #define FSSIZE       2000  // size of file system in blocks
+ #define MAXPATH      128   // maximum file path name
++
++// MLFQ and Lottery Scheduling Parameters
++#define TIME_LIMIT_0     2   // Time slice (ticks) for Queue 0
++#define TIME_LIMIT_1     4   // Time slice (ticks) for Queue 1
++#define WAIT_THRESH      6   // Ticks waiting in Q1 before promotion (aging)
++#define DEFAULT_TICKETS  10  // Default tickets assigned to new processes
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 58a8a0b..5704473 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -5,6 +5,22 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ #include "defs.h"
++#include "pstat.h"
++
++// Global logging toggle
++int print_logs = 1;
++
++// Deterministic LCG PRNG for lottery draws
++static unsigned long rand_seed = 123456789;
++
++static int
++rand(int max)
++{
++  if(max <= 0)
++    return 0;
++  rand_seed = rand_seed * 1103515245 + 12345;
++  return (int)((rand_seed / 65536) % 32768) % max;
++}
+ 
+ struct cpu cpus[NCPU];
+ 
+@@ -15,6 +31,8 @@ struct proc *initproc;
+ int nextpid = 1;
+ struct spinlock pid_lock;
+ 
++struct spinlock mlfq_lock;
++
+ extern void forkret(void);
+ static void freeproc(struct proc *p);
+ 
+@@ -51,6 +69,7 @@ procinit(void)
+   
+   initlock(&pid_lock, "nextpid");
+   initlock(&wait_lock, "wait_lock");
++  initlock(&mlfq_lock, "mlfq_lock");
+   for(p = proc; p < &proc[NPROC]; p++) {
+       initlock(&p->lock, "proc");
+       p->state = UNUSED;
+@@ -146,6 +165,17 @@ found:
+   p->context.ra = (uint64)forkret;
+   p->context.sp = p->kstack + PGSIZE;
+ 
++  // Initialize MLFQ scheduling fields
++  p->inQ = 0;
++  p->tickets_original = DEFAULT_TICKETS;
++  p->tickets_current = DEFAULT_TICKETS;
++  p->ticks_consumed = 0;
++  p->waiting_time = 0;
++  p->running_time = 0;
++  p->times_scheduled = 0;
++  p->queue_ticks[0] = 0;
++  p->queue_ticks[1] = 0;
++
+   return p;
+ }
+ 
+@@ -310,6 +340,10 @@ fork(void)
+ 
+   safestrcpy(np->name, p->name, sizeof(p->name));
+ 
++  // Inherit tickets from parent
++  np->tickets_original = p->tickets_original;
++  np->tickets_current = p->tickets_current;
++
+   pid = np->pid;
+ 
+   release(&np->lock);
+@@ -449,27 +483,119 @@ scheduler(void)
+ 
+   c->proc = 0;
+   for(;;){
+-    // The most recent process to run may have had interrupts
+-    // turned off; enable them to avoid a deadlock if all
+-    // processes are waiting.
+     intr_on();
+ 
++    struct proc *chosen_p = 0;
++
++    acquire(&mlfq_lock);
++
++    // STEP 1: Aging sweep - promote from Queue 1 to Queue 0
++    for(p = proc; p < &proc[NPROC]; p++) {
++      acquire(&p->lock);
++      if(p->state == RUNNABLE && p->inQ == 1 && p->waiting_time > WAIT_THRESH) {
++        p->inQ = 0;
++        p->ticks_consumed = 0;
++        p->waiting_time = 0;
++        if(print_logs) {
++          printf("\033[0;33mBOOST: Process %d (%s) waited for %d ticks, promoted to queue 0\033[0m\n",
++                 p->pid, p->name, WAIT_THRESH);
++        }
++      }
++      release(&p->lock);
++    }
++
++    // STEP 2: Check Queue 0 (Lottery Scheduling)
++    int total_tickets = 0;
+     for(p = proc; p < &proc[NPROC]; p++) {
+       acquire(&p->lock);
+-      if(p->state == RUNNABLE) {
+-        // Switch to chosen process.  It is the process's job
+-        // to release its lock and then reacquire it
+-        // before jumping back to us.
+-        p->state = RUNNING;
+-        c->proc = p;
+-        swtch(&c->context, &p->context);
+-
+-        // Process is done running for now.
+-        // It should have changed its p->state before coming back.
+-        c->proc = 0;
++      if(p->state == RUNNABLE && p->inQ == 0) {
++        total_tickets += p->tickets_current;
+       }
+       release(&p->lock);
+     }
++
++    // Reset current tickets if all runnable Queue 0 processes hit 0
++    if(total_tickets == 0) {
++      for(p = proc; p < &proc[NPROC]; p++) {
++        acquire(&p->lock);
++        if(p->state == RUNNABLE && p->inQ == 0) {
++          p->tickets_current = p->tickets_original;
++          total_tickets += p->tickets_current;
++        }
++        release(&p->lock);
++      }
++    }
++
++    // If there are runnable processes in Queue 0, hold the lottery
++    if(total_tickets > 0) {
++      int winner_ticket = rand(total_tickets);
++      int ticket_sum = 0;
++
++      for(p = proc; p < &proc[NPROC]; p++) {
++        acquire(&p->lock);
++        if(p->state == RUNNABLE && p->inQ == 0) {
++          ticket_sum += p->tickets_current;
++          if(ticket_sum > winner_ticket && chosen_p == 0) {
++            chosen_p = p;
++            // Hold lock for the scheduled process
++            continue;
++          }
++        }
++        release(&p->lock);
++      }
++
++      if(chosen_p != 0) {
++        int ticket_val = chosen_p->tickets_current;
++        chosen_p->tickets_current--;
++        chosen_p->times_scheduled++;
++        chosen_p->waiting_time = 0;
++
++        if(print_logs) {
++          printf("\033[0;32mLOTTERY: Process %d (%s) won in queue 0 with tickets %d\033[0m\n",
++                 chosen_p->pid, chosen_p->name, ticket_val);
++        }
++
++        chosen_p->state = RUNNING;
++        c->proc = chosen_p;
++      }
++    }
++
++    // STEP 3: RR fallback on Q1
++    if(chosen_p == 0) {
++      for(p = proc; p < &proc[NPROC]; p++) {
++        acquire(&p->lock);
++        if(p->state == RUNNABLE && p->inQ == 1) {
++          chosen_p = p;
++          chosen_p->times_scheduled++;
++          chosen_p->waiting_time = 0;
++          chosen_p->state = RUNNING;
++          c->proc = chosen_p;
++          break; // keep holding chosen_p->lock
++        }
++        release(&p->lock);
++      }
++    }
++
++    // Release global lock BEFORE swtch
++    release(&mlfq_lock);
++
++    if(chosen_p == 0)
++      continue;
++
++    // Resume loop (still holds chosen_p->lock)
++    swtch(&c->context, &chosen_p->context);
++    c->proc = 0;
++    while(chosen_p->state == RUNNABLE && chosen_p->inQ == 0 &&
++          chosen_p->ticks_consumed < TIME_LIMIT_0) {
++      chosen_p->times_scheduled++;
++      chosen_p->waiting_time = 0;
++      chosen_p->state = RUNNING;
++      c->proc = chosen_p;
++      swtch(&c->context, &chosen_p->context);
++      c->proc = 0;
++    }
++
++    release(&chosen_p->lock);
+   }
+ }
+ 
+@@ -501,11 +627,39 @@ sched(void)
+ }
+ 
+ // Give up the CPU for one scheduling round.
++// yield() is called on every timer tick — it is always a
++// timer-driven preemption, never a voluntary yield.
+ void
+ yield(void)
+ {
+   struct proc *p = myproc();
+   acquire(&p->lock);
++
++  p->ticks_consumed++;
++  p->queue_ticks[p->inQ]++;
++
++  if(p->inQ == 0) {
++    if(p->ticks_consumed >= TIME_LIMIT_0) {
++      // Used full time slice -> Demote to Queue 1
++      p->inQ = 1;
++      p->running_time++;
++      if(print_logs) {
++        printf("\033[0;31mDEMO: Process %d (%s) ran for %d time ticks, demoted to queue 1\033[0m\n",
++               p->pid, p->name, p->ticks_consumed);
++      }
++      p->ticks_consumed = 0;
++    }
++    // else: time slice not exhausted, do nothing — scheduler will
++    // resume this process on the next iteration.
++  } else if(p->inQ == 1) {
++    if(p->ticks_consumed >= TIME_LIMIT_1) {
++      // Exhausted Q1 time slice -> Remain in Queue 1
++      p->running_time++;
++      p->ticks_consumed = 0;
++    }
++    // else: Q1 time slice not exhausted, do nothing.
++  }
++
+   p->state = RUNNABLE;
+   sched();
+   release(&p->lock);
+@@ -552,6 +706,22 @@ sleep(void *chan, struct spinlock *lk)
+   acquire(&p->lock);  //DOC: sleeplock1
+   release(lk);
+ 
++  // Voluntary yield: process is giving up the CPU before its
++  // time slice is exhausted (e.g. waiting for I/O).
++  // Promote it one level up if applicable.
++  if(p->ticks_consumed > 0) {
++    if(p->inQ == 1 && p->ticks_consumed < TIME_LIMIT_1) {
++      // In Queue 1, hasn't used full slice -> promote to Queue 0
++      p->inQ = 0;
++      if(print_logs) {
++        printf("\033[0;34mPROMO: Process %d (%s) ran for %d time ticks, promoted to queue 0\033[0m\n",
++               p->pid, p->name, p->ticks_consumed);
++      }
++    }
++    // Reset ticks_consumed since the process is giving up the CPU
++    p->ticks_consumed = 0;
++  }
++
+   // Go to sleep.
+   p->chan = chan;
+   p->state = SLEEPING;
+diff --git a/kernel/proc.h b/kernel/proc.h
+index d021857..1c3ad5a 100644
+--- a/kernel/proc.h
++++ b/kernel/proc.h
+@@ -104,4 +104,16 @@ struct proc {
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
++
++  // MLFQ Scheduling Fields
++  int inQ;                     // Current queue index (0 = Lottery, 1 = Round Robin)
++  int tickets_original;        // Base ticket count
++  int tickets_current;         // Remaining tickets in current lottery cycle
++  int ticks_consumed;          // Ticks consumed in current time slice
++  int waiting_time;            // Ticks spent waiting in RUNNABLE state
++  int running_time;            // Times scheduled before time slice expired
++  int times_scheduled;         // Total times scheduled
++  uint queue_ticks[2];         // Total ticks accumulated in queue 0 and queue 1
+ };
++
++extern struct proc proc[];
+diff --git a/kernel/pstat.h b/kernel/pstat.h
+new file mode 100644
+index 0000000..4324bc9
+--- /dev/null
++++ b/kernel/pstat.h
+@@ -0,0 +1,18 @@
++#ifndef _PSTAT_H_
++#define _PSTAT_H_
++
++#include "param.h"
++
++struct pstat {
++  int pid[NPROC];              // process ID of each process
++  int inuse[NPROC];            // whether this proc slot is in use (1 or 0)
++  int inQ[NPROC];              // current queue of the process
++  int waiting_time[NPROC];     // ticks spent waiting before being scheduled
++  int running_time[NPROC];     // times scheduled before time slice was used
++  int times_scheduled[NPROC];  // total times this process was scheduled
++  int tickets_original[NPROC]; // tickets originally assigned
++  int tickets_current[NPROC];  // tickets currently held
++  uint queue_ticks[NPROC][2];  // total ticks spent in each queue
++};
++
++#endif // _PSTAT_H_
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..7e42e65 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -6,6 +6,7 @@
+ #include "proc.h"
+ #include "syscall.h"
+ #include "defs.h"
++#include "pstat.h"
+ 
+ // Fetch the uint64 at addr from the current process.
+ int
+@@ -101,6 +102,8 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_settickets(void);
++extern uint64 sys_getpinfo(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -126,6 +129,8 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_settickets] sys_settickets,
++[SYS_getpinfo]   sys_getpinfo,
+ };
+ 
+ void
+@@ -145,3 +150,53 @@ syscall(void)
+     p->trapframe->a0 = -1;
+   }
+ }
++
++uint64
++sys_settickets(void)
++{
++  int number;
++  argint(0, &number);
++
++  struct proc *p = myproc();
++
++  if(number < 1) {
++    p->tickets_original = DEFAULT_TICKETS;
++    p->tickets_current = DEFAULT_TICKETS;
++    return -1;
++  }
++
++  p->tickets_original = number;
++  p->tickets_current = number;
++  return 0;
++}
++
++uint64
++sys_getpinfo(void)
++{
++  uint64 addr;
++  argaddr(0, &addr);
++
++  struct pstat st;
++  struct proc *p;
++
++  for(p = proc; p < &proc[NPROC]; p++) {
++    acquire(&p->lock);
++    st.pid[p - proc] = p->pid;
++    st.inuse[p - proc] = (p->state != UNUSED) ? 1 : 0;
++    st.inQ[p - proc] = p->inQ;
++    st.waiting_time[p - proc] = p->waiting_time;
++    st.running_time[p - proc] = p->running_time;
++    st.times_scheduled[p - proc] = p->times_scheduled;
++    st.tickets_original[p - proc] = p->tickets_original;
++    st.tickets_current[p - proc] = p->tickets_current;
++    st.queue_ticks[p - proc][0] = p->queue_ticks[0];
++    st.queue_ticks[p - proc][1] = p->queue_ticks[1];
++    release(&p->lock);
++  }
++
++  struct proc *curproc = myproc();
++  if(copyout(curproc->pagetable, addr, (char *)&st, sizeof(st)) < 0)
++    return -1;
++
++  return 0;
++}
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..13e05a0 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_settickets 22
++#define SYS_getpinfo   23
+diff --git a/kernel/trap.c b/kernel/trap.c
+index f21fa26..11459be 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -167,6 +167,19 @@ clockintr()
+   ticks++;
+   wakeup(&ticks);
+   release(&tickslock);
++
++  // Increment waiting_time for all RUNNABLE processes (for aging)
++  // Only CPU 0 does this to avoid counting NCPUS times per real tick
++  if(cpuid() == 0) {
++    struct proc *p;
++    for(p = proc; p < &proc[NPROC]; p++) {
++      acquire(&p->lock);
++      if(p->state == RUNNABLE) {
++        p->waiting_time++;
++      }
++      release(&p->lock);
++    }
++  }
+ }
+ 
+ // check if it's an external interrupt or software interrupt,
+diff --git a/user/dummyproc.c b/user/dummyproc.c
+new file mode 100644
+index 0000000..1616c34
+--- /dev/null
++++ b/user/dummyproc.c
+@@ -0,0 +1,47 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int
++main(int argc, char *argv[])
++{
++  if(argc < 3) {
++    printf("Usage: dummyproc <tickets> <iterations>\n");
++    exit(1);
++  }
++
++  int tickets = atoi(argv[1]);
++  int iterations = atoi(argv[2]);
++
++  if(settickets(tickets) < 0) {
++    printf("dummyproc: settickets failed\n");
++    exit(1);
++  }
++
++  int pid = fork();
++
++  if(pid < 0) {
++    printf("dummyproc: fork failed\n");
++    exit(1);
++  }
++
++  if(pid == 0) {
++    // Child: I/O-bound, periodically sleeps to trigger PROMO
++    for(int i = 0; i < iterations; i++) {
++      if(i % (iterations / 10 + 1) == 0) {
++        sleep(1);
++      }
++    }
++    exit(0);
++  } else {
++    // Parent: CPU-bound loop — LCG body can't be optimized away
++    uint32 sink = 0;
++    for(int i = 0; i < iterations; i++) {
++      sink = sink * 1103515245u + i;
++      sink ^= (sink >> 13);
++    }
++    wait(0);
++  }
++
++  exit(0);
++}
+diff --git a/user/testprocinfo.c b/user/testprocinfo.c
+new file mode 100644
+index 0000000..9871f7d
+--- /dev/null
++++ b/user/testprocinfo.c
+@@ -0,0 +1,37 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++#include "kernel/pstat.h"
++
++int
++main(int argc, char *argv[])
++{
++  struct pstat st;
++
++  if(getpinfo(&st) < 0) {
++    printf("testprocinfo: getpinfo failed\n");
++    exit(1);
++  }
++
++  printf("PID\tIn Use\tIn Q\tWait time\tRun time\tTimes sched\tOrig tix\tCurr tix\tq0 ticks\tq1 ticks\n");
++  printf("--------------------------------------------------------------------------------------------------------------\n");
++
++  for(int i = 0; i < NPROC; i++) {
++    if(st.pid[i] == 0 || st.inuse[i] == 0)
++      continue;
++
++    printf("%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
++           st.pid[i],
++           st.inuse[i],
++           st.inQ[i],
++           st.waiting_time[i],
++           st.running_time[i],
++           st.times_scheduled[i],
++           st.tickets_original[i],
++           st.tickets_current[i],
++           st.queue_ticks[i][0],
++           st.queue_ticks[i][1]);
++  }
++
++  exit(0);
++}
+diff --git a/user/user.h b/user/user.h
+index 04013ca..33611bf 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -22,6 +22,8 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int settickets(int);
++int getpinfo(void*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usertests.c b/user/usertests.c
+index 55debe7..7938caa 100644
+--- a/user/usertests.c
++++ b/user/usertests.c
+@@ -241,7 +241,7 @@ copyinstr3(char *s)
+ // See if the kernel refuses to read/write user memory that the
+ // application doesn't have anymore, because it returned it.
+ void
+-rwsbrk()
++rwsbrk(char *s)
+ {
+   int fd, n;
+   
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..d2435c1 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("settickets");
++entry("getpinfo");
